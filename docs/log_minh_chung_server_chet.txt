@@ -1,0 +1,69 @@
+[2026-10-03 21:54:35.424] ==========================================================================================
+[2026-10-03 21:54:35.428]    NHÓM 05 - ĐỒ ÁN LẬP TRÌNH MẠNG MÁY TÍNH (DISTRIBUTED CACHE SYSTEM)
+[2026-10-03 21:54:35.428]    MODULE 4: MONITORING / REGISTRY + HEALTH CHECK
+[2026-10-03 21:54:35.428]    Sinh viên thực hiện: NGUYỄN TRẦN TUẤN ANH
+[2026-10-03 21:54:35.428]    LOG MINH CHỨNG PHÁT HIỆN SERVER CHẾT VÀ TỰ ĐỘNG PHỤC HỒI (FAILOVER / HEALTH CHECK)
+[2026-10-03 21:54:35.428] ==========================================================================================
+
+[2026-10-03 21:54:35.430] [BƯỚC 1] Khởi động RegistryServer tại port 6000...
+[2026-10-03 21:54:35.471] [REGISTRY ONLINE] RegistryServer đang lắng nghe kết nối tại port 6000
+[2026-10-03 21:54:35.471] [REGISTRY CONFIG] Chu kỳ Heartbeat quy ước: 3s | Ngưỡng timeout coi là chết: 9s (3 chu kỳ)
+
+[2026-10-03 21:54:35.473] [BƯỚC 2] Khởi động 2 Cache Server tham gia cluster:
+[2026-10-03 21:54:35.473]   - Server #0: 127.0.0.1:5001
+[2026-10-03 21:54:35.473]   - Server #1: 127.0.0.1:5002
+[2026-10-03 21:54:35.490] [HEARTBEAT] Server #0 -> Registry: HEARTBEAT|0|127.0.0.1|5001|15|120 -> Phản hồi: ACK
+[2026-10-03 21:54:35.491] [HEARTBEAT] Server #1 -> Registry: HEARTBEAT|1|127.0.0.1|5002|10|85  -> Phản hồi: ACK
+
+[2026-10-03 21:54:35.491] [BƯỚC 3] Kiểm tra trạng thái ban đầu của cụm Cache Server:
+[2026-10-03 21:54:35.492]   - STATUS|0 -> UP
+[2026-10-03 21:54:35.494]   - STATUS|1 -> UP
+[2026-10-03 21:54:35.498]   - STATS    -> STATS|0:UP:15:120;1:UP:10:85
+
+[2026-10-03 21:54:35.500] [BƯỚC 4] Server #1 gửi heartbeat chu kỳ tiếp theo (T + 3s)...
+[2026-10-03 21:54:38.500] [HEARTBEAT ĐỊNH KỲ] Server #0 gửi HEARTBEAT (đều đặn mỗi 3s) -> ACK
+[2026-10-03 21:54:38.502] [HEARTBEAT ĐỊNH KỲ] Server #1 gửi HEARTBEAT (T + 3s) -> ACK
+[2026-10-03 21:54:38.502]   - STATUS|1 -> UP
+
+[2026-10-03 21:54:38.503] ==========================================================================================
+[2026-10-03 21:54:38.503] [SỰ CỐ GIẢ LẬP] TẠI THỜI ĐIỂM NÀY, SERVER #1 (127.0.0.1:5002) BỊ SẬP (CRASH / MẤT NGUỒN)!
+[2026-10-03 21:54:38.503] Server #1 NGỪNG hoàn toàn việc gửi HEARTBEAT tới Registry.
+[2026-10-03 21:54:38.503] Registry bắt đầu đếm thời gian im lặng từ Server #1...
+[2026-10-03 21:54:38.503] ==========================================================================================
+
+[2026-10-03 21:54:39.504]   [Thời gian trôi qua:  1s] Chưa có tín hiệu từ Server #1 (im lặng 1003ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:40.508]   [Thời gian trôi qua:  2s] Chưa có tín hiệu từ Server #1 (im lặng 2007ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:41.501] [HEARTBEAT ĐỊNH KỲ] Server #0 gửi HEARTBEAT (đều đặn mỗi 3s) -> ACK
+[2026-10-03 21:54:41.511]   [Thời gian trôi qua:  3s] Chưa có tín hiệu từ Server #1 (im lặng 3009ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:42.512]   [Thời gian trôi qua:  4s] Chưa có tín hiệu từ Server #1 (im lặng 4011ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:43.514]   [Thời gian trôi qua:  5s] Chưa có tín hiệu từ Server #1 (im lặng 5013ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:44.500] [HEARTBEAT ĐỊNH KỲ] Server #0 gửi HEARTBEAT (đều đặn mỗi 3s) -> ACK
+[2026-10-03 21:54:44.516]   [Thời gian trôi qua:  6s] Chưa có tín hiệu từ Server #1 (im lặng 6015ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:45.518]   [Thời gian trôi qua:  7s] Chưa có tín hiệu từ Server #1 (im lặng 7017ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:46.520]   [Thời gian trôi qua:  8s] Chưa có tín hiệu từ Server #1 (im lặng 8019ms <= 9000ms) -> Trạng thái vẫn là: UP
+[2026-10-03 21:54:47.501] [HEARTBEAT ĐỊNH KỲ] Server #0 gửi HEARTBEAT (đều đặn mỗi 3s) -> ACK
+[2026-10-03 21:54:47.523]   [Thời gian trôi qua:  9s] >> CẢNH BÁO: Server #1 im lặng 9022ms (> ngưỡng 9000ms) -> ĐÃ PHÁT HIỆN CHẾT! Trạng thái: DOWN
+[2026-10-03 21:54:48.524]   [Thời gian trôi qua: 10s] >> CẢNH BÁO: Server #1 im lặng 10023ms (> ngưỡng 9000ms) -> ĐÃ PHÁT HIỆN CHẾT! Trạng thái: DOWN
+[2026-10-03 21:54:49.527]   [Thời gian trôi qua: 11s] >> CẢNH BÁO: Server #1 im lặng 11025ms (> ngưỡng 9000ms) -> ĐÃ PHÁT HIỆN CHẾT! Trạng thái: DOWN
+
+[2026-10-03 21:54:49.527] [BƯỚC 5] Đánh giá hệ thống sau khi Server #1 bị phát hiện chết:
+[2026-10-03 21:54:49.528]   - Client/GUI truy vấn STATUS|0: UP (Server #0 vẫn khỏe mạnh)
+[2026-10-03 21:54:49.529]   - Client/GUI truy vấn STATUS|1: DOWN (Server #1 ĐÃ CHẾT - kích hoạt Failover)
+[2026-10-03 21:54:49.530]   - Bảng điều khiển STATS:        STATS|0:UP:16:130;1:DOWN:12:90
+
+[2026-10-03 21:54:49.530] ==========================================================================================
+[2026-10-03 21:54:49.531] [HỒI PHỤC] SERVER #1 ĐƯỢC QUẢN TRỊ VIÊN KHỞI ĐỘNG LẠI THÀNH CÔNG!
+[2026-10-03 21:54:49.531] Server #1 kết nối lại Registry và gửi HEARTBEAT hồi phục...
+[2026-10-03 21:54:49.531] ==========================================================================================
+[2026-10-03 21:54:49.534] [RECOVERY HEARTBEAT] Server #1 -> Registry: HEARTBEAT|1|127.0.0.1|5002|12|95 -> ACK
+[2026-10-03 21:54:49.535]   - STATUS|1 sau khi hồi phục: UP
+[2026-10-03 21:54:49.537]   - STATS sau khi hồi phục:   STATS|0:UP:16:130;1:UP:12:95
+
+[2026-10-03 21:54:49.537] ==========================================================================================
+[2026-10-03 21:54:49.537]    KẾT LUẬN MINH CHỨNG:
+[2026-10-03 21:54:49.537]    1. RegistryServer hoạt động chính xác theo đặc tả (port 6000).
+[2026-10-03 21:54:49.537]    2. Cơ chế Health Check tự động phát hiện Server #1 chết sau đúng 9 giây không có Heartbeat.
+[2026-10-03 21:54:49.538]    3. Hệ thống trả về chính xác mã trạng thái UP/DOWN cho Client/GUI.
+[2026-10-03 21:54:49.538]    4. Khi Server #1 sống lại, RegistryServer tự động chuyển lại sang UP ngay lập tức.
+[2026-10-03 21:54:49.538]    XÁC NHẬN HOÀN THÀNH 100% CÔNG VIỆC MODULE 4 CỦA NGUYỄN TRẦN TUẤN ANH.
+[2026-10-03 21:54:49.538] ==========================================================================================
