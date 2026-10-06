@@ -47,6 +47,13 @@ GET|username
 DELETE|username
 ```
 
+## Module 3 — Replication & Consistency
+
+- `ReplicationHandler` (package `replication`): sau mỗi PUT/DELETE thành công, server chính gửi **bất đồng bộ** `REPLICATE|PUT|key|value|timestamp` / `REPLICATE|DELETE|key|timestamp` tới server dự phòng `(serverIndex+1) mod N` trên **port replication riêng = port client + 1000** (vd server 5001 ↔ 6001). Gửi lỗi chỉ ghi log, không ảnh hưởng client.
+- Xung đột: bản ghi có `timestamp` lớn hơn thắng (last-write-wins). `KeyValueStore` giữ "tombstone" cho key đã xóa để lệnh PUT cũ đến trễ không làm sống lại key.
+- Bản sao nhận TTL mặc định tính từ lúc nhận (message đồng bộ không mang TTL).
+- Server chỉ bật replication khi cluster có từ 2 server trở lên.
+
 ## Module 4 — Monitoring / Registry + Health Check (Nguyễn Trần Tuấn Anh)
 
 - `RegistryServer`: Tiến trình Registry độc lập lắng nghe trên port cố định `6000`, sử dụng `ConcurrentHashMap` lưu trữ thông tin và trạng thái (`UP`/`DOWN`) của các Cache Server trong cluster.

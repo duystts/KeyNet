@@ -3,6 +3,7 @@ package com.nhom05.cache.server;
 import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig;
+import com.nhom05.cache.replication.ReplicationHandler;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -31,6 +32,8 @@ public final class CacheServer {
     private final KeyValueStore store;
     private final ExecutorService pool;
     private volatile boolean running = true;
+    private volatile ServerSocket listener;
+    private volatile Replicator replicator = Replicator.NOOP;
 
     public CacheServer(int port, long ttlSeconds, int maxEntries) {
         this.port = port;
@@ -38,13 +41,24 @@ public final class CacheServer {
         this.pool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
     }
 
+    /** Kho du lieu cua server nay (Module 3 dung de gan listener nhan REPLICATE). */
+    public KeyValueStore store() {
+        return store;
+    }
+
+    /** Gan Module 3 (Replication) vao server; goi truoc start(). */
+    public void setReplicator(Replicator replicator) {
+        this.replicator = replicator == null ? Replicator.NOOP : replicator;
+    }
+
     public void start() throws IOException {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
+            listener = serverSocket;
             LOGGER.info(() -> "CacheServer dang lang nghe tai port " + port);
             while (running) {
                 try {
                     Socket client = serverSocket.accept();
-                    pool.execute(new ClientHandler(client, store));
+                    pool.execute(new ClientHandler(client, store, replicator));
                 } catch (RejectedExecutionException e) {
                     // Thread pool qua tai - khong the xu ly them ket noi luc nay.
                     LOGGER.warning(() -> "Server qua tai (" + ErrorCode.E004.code()
@@ -62,7 +76,18 @@ public final class CacheServer {
 
     public void shutdown() {
         running = false;
+        // Dong ServerSocket de accept() dang chan thoat ra va nha port ngay
+        // (neu khong, server "da tat" van giu port va nuot ket noi moi).
+        try {
+            ServerSocket s = listener;
+            if (s != null) {
+                s.close();
+            }
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Loi dong ServerSocket: " + e.getMessage(), e);
+        }
         pool.shutdown();
+        replicator.close();
         store.close();
     }
 
@@ -73,6 +98,14 @@ public final class CacheServer {
             ServerConfig.ServerAddress self = config.self();
 
             CacheServer server = new CacheServer(self.port(), config.ttlSeconds(), config.maxEntries());
+            if (config.serverCount() > 1) {
+                ReplicationHandler replication = new ReplicationHandler(server.store());
+                ServerConfig.ServerAddress backup = config.servers().get(config.backupIndex());
+                replication.configureBackupServer(backup.host(),
+                        config.replicationPort(config.backupIndex()));
+                replication.startListener(config.replicationPort(config.serverIndex()));
+                server.setReplicator(replication);
+            }
             Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
 
             LOGGER.info(() -> "KeyNet CacheServer #" + config.serverIndex()

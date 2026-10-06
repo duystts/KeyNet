@@ -5,26 +5,29 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
 
 /**
  * Key-Value Store trong RAM cho 1 Cache Server.
  *
- * - Luu tru chinh bang ConcurrentHashMap (bat buoc theo muc 8 cua dac ta giao thuc:
- *   "moi thao tac doc/ghi tren kho du lieu chinh phai dung ConcurrentHashMap").
- * - TTL: moi key co thoi gian song rieng (mac dinh = ttlSeconds cau hinh),
- *   mot thread nen (ScheduledExecutorService) quet va xoa key het han dinh ky.
- * - LRU eviction: khi so luong key vuot maxEntries, xoa key co lastAccessMillis
- *   nho nhat (it dung nhat) de nhuong cho ghi moi.
+ * - Luu tru chinh bang ConcurrentHashMap (bat buoc theo muc 8 cua dac ta giao thuc).
+ * - TTL: moi key co thoi gian song rieng, thread nen quet va xoa key het han dinh ky.
+ * - LRU eviction: vuot maxEntries thi xoa key it dung nhat.
+ * - Timestamp + tombstone: phuc vu replication (muc 5 dac ta) - ban ghi co timestamp
+ *   lon hon thang; lenh DELETE de lai "tombstone" de 1 lenh PUT cu den tre khong
+ *   lam song lai key da xoa.
  *
- * Lop nay KHONG biet gi ve socket/giao thuc mang - chi la engine luu tru thuan tuy,
- * de co the unit test doc lap (xem KeyValueStoreTest).
+ * Lop nay KHONG biet gi ve socket/giao thuc mang.
  */
 public final class KeyValueStore implements AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(KeyValueStore.class.getName());
 
     private final ConcurrentHashMap<String, CacheEntry> store = new ConcurrentHashMap<>();
+    /** key -> timestamp cua lan xoa gan nhat; tu don sau 1 chu ky TTL. */
+    private final ConcurrentHashMap<String, Long> tombstones = new ConcurrentHashMap<>();
+    private final AtomicLong lastTimestamp = new AtomicLong();
     private final long ttlMillis;
     private final int maxEntries;
     private final ScheduledExecutorService ttlSweeper;
@@ -37,15 +40,26 @@ public final class KeyValueStore implements AutoCloseable {
             t.setDaemon(true);
             return t;
         });
-        // Quet moi 1 giay de xoa key het han (xem muc 8 - luu y trien khai)
         this.ttlSweeper.scheduleAtFixedRate(this::sweepExpired, 1, 1, TimeUnit.SECONDS);
     }
 
-    /** Ghi hoac ghi de 1 key, dat lai TTL ke tu bay gio. */
-    public void put(String key, String value) {
-        long expireAt = System.currentTimeMillis() + ttlMillis;
-        store.put(key, new CacheEntry(value, expireAt));
+    /**
+     * Timestamp tang nghiem ngat cho cac thao tac ghi cuc bo (System.currentTimeMillis,
+     * +1 neu trung ms): 2 lan ghi lien tiep khong bao gio trung timestamp, nen server
+     * du phong luon phan xu dung thu tu.
+     */
+    public long nextTimestamp() {
+        long now = System.currentTimeMillis();
+        return lastTimestamp.updateAndGet(prev -> Math.max(now, prev + 1));
+    }
+
+    /** Ghi hoac ghi de 1 key, dat lai TTL. Tra ve timestamp cua lan ghi (de replicate). */
+    public long put(String key, String value) {
+        long ts = nextTimestamp();
+        store.put(key, new CacheEntry(value, System.currentTimeMillis() + ttlMillis, ts));
+        tombstones.remove(key);
         evictIfNeeded();
+        return ts;
     }
 
     /** Doc gia tri; tra null neu khong co hoac da het han. */
@@ -64,24 +78,75 @@ public final class KeyValueStore implements AutoCloseable {
 
     /** Xoa 1 key; tra true neu key co ton tai truoc do. */
     public boolean delete(String key) {
+        return delete(key, nextTimestamp());
+    }
+
+    /** Nhu delete(key) nhung dung timestamp do caller cap (de replicate cung timestamp). */
+    public boolean delete(String key, long timestamp) {
+        tombstones.merge(key, timestamp, Math::max);
         return store.remove(key) != null;
+    }
+
+    /**
+     * Ap dung 1 lenh REPLICATE|PUT nhan tu server chinh. Chi ghi neu timestamp moi hon
+     * ban ghi hien co VA moi hon lan xoa gan nhat cua key.
+     * Ban sao nhan TTL mac dinh tinh tu luc nhan (message dong bo khong mang TTL).
+     *
+     * @return true neu da ghi, false neu bi bo qua do timestamp cu
+     */
+    public boolean putReplicated(String key, String value, long timestamp) {
+        boolean[] applied = {false};
+        store.compute(key, (k, existing) -> {
+            Long deletedAt = tombstones.get(k);
+            if (deletedAt != null && deletedAt >= timestamp) {
+                return existing;
+            }
+            if (existing != null && existing.timestamp() >= timestamp) {
+                return existing;
+            }
+            applied[0] = true;
+            return new CacheEntry(value, System.currentTimeMillis() + ttlMillis, timestamp);
+        });
+        if (applied[0]) {
+            tombstones.computeIfPresent(key, (k, t) -> t < timestamp ? null : t);
+            evictIfNeeded();
+        }
+        return applied[0];
+    }
+
+    /**
+     * Ap dung 1 lenh REPLICATE|DELETE: xoa key neu ban ghi hien co cu hon timestamp,
+     * va luon ghi tombstone de chan PUT cu den tre.
+     *
+     * @return true neu da xoa 1 ban ghi ton tai
+     */
+    public boolean deleteReplicated(String key, long timestamp) {
+        tombstones.merge(key, timestamp, Math::max);
+        boolean[] removed = {false};
+        store.compute(key, (k, existing) -> {
+            if (existing != null && existing.timestamp() < timestamp) {
+                removed[0] = true;
+                return null;
+            }
+            return existing;
+        });
+        return removed[0];
     }
 
     public int size() {
         return store.size();
     }
 
-    /** Xoa cac key da het han TTL. Chay dinh ky boi ttlSweeper, co the goi thu cong khi test. */
+    /** Xoa cac key het han TTL va tombstone qua cu. Chay dinh ky boi ttlSweeper. */
     void sweepExpired() {
         long now = System.currentTimeMillis();
         int removed = 0;
         for (Map.Entry<String, CacheEntry> e : store.entrySet()) {
-            if (e.getValue().isExpired(now)) {
-                if (store.remove(e.getKey(), e.getValue())) {
-                    removed++;
-                }
+            if (e.getValue().isExpired(now) && store.remove(e.getKey(), e.getValue())) {
+                removed++;
             }
         }
+        tombstones.values().removeIf(ts -> now - ts > ttlMillis);
         if (removed > 0) {
             int removedCount = removed;
             LOGGER.fine(() -> "TTL sweep removed " + removedCount + " key(s)");

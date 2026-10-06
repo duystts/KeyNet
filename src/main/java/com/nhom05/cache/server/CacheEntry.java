@@ -2,25 +2,35 @@ package com.nhom05.cache.server;
 
 /**
  * Mot ban ghi trong Key-Value Store: gia tri + thoi diem het han (TTL)
+ * + timestamp ghi (dung de giai quyet xung dot khi replication, muc 5 dac ta)
  * + thoi diem truy cap gan nhat (dung cho LRU eviction).
+ *
+ * Giu package-private: chi KeyValueStore duoc thao tac truc tiep, cac module khac
+ * (vd Replication) di qua API cua KeyValueStore de khong lam hong TTL/LRU/maxEntries.
  */
 final class CacheEntry {
 
     private final String value;
     private final long expireAtMillis;
+    private final long timestamp;
     // Dung nanoTime (khong phai epoch millis) chi de SO SANH thu tu truy cap gan day:
     // do phan giai millis qua tho, 2 lan ghi lien tiep co the trung timestamp
     // va lam sai thu tu LRU. nanoTime chi dung noi bo, khong dung de hien thi/luu tru.
     private volatile long lastAccessNanos;
 
-    CacheEntry(String value, long expireAtMillis) {
+    CacheEntry(String value, long expireAtMillis, long timestamp) {
         this.value = value;
         this.expireAtMillis = expireAtMillis;
+        this.timestamp = timestamp;
         this.lastAccessNanos = System.nanoTime();
     }
 
     String value() {
         return value;
+    }
+
+    long timestamp() {
+        return timestamp;
     }
 
     boolean isExpired(long now) {
