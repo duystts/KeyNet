@@ -136,6 +136,9 @@ public class KeyNetGuiApp extends JFrame {
         try {
             config = ServerConfig.load("config/config.properties");
             cacheClient = CacheClient.loadFromConfig("config/config.properties");
+            if (cacheClient != null) {
+                cacheClient.setSimulatedDeadNodes(simulatedDeadNodes);
+            }
         } catch (IOException e) {
             System.err.println("Cảnh báo: Không thể tải file config/config.properties");
         }

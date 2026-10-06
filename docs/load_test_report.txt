@@ -148,3 +148,30 @@ Throughput (Chịu tải)  : 6734.01 ops/sec
 Độ trễ lớn nhất (Max)  : 54 ms
 =================================================
 
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 14:44:11
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 2000 (100.00%)
+Số request thất bại    : 0 (0.00%)
+Tổng thời gian thực thi: 0.274 giây
+Throughput (Chịu tải)  : 7299.27 ops/sec
+Độ trễ trung bình      : 2.67 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 53 ms
+=================================================
+
+=================================================
+       BÁO CÁO BENCHMARK DỮ LIỆU CỤM PHÂN TÁN     
+=================================================
+Thời gian thực hiện : 2026-10-06 17:25:21
+Số luồng đồng thời  : 20 threads
+Tổng số Requests    : 2000
+Chịu tải (Throughput): 10416.67 ops/sec
+Độ trễ trung bình   : 1.84 ms
+Tỷ lệ thành công    : 100.00 %
+=================================================
+
