@@ -1,5 +1,7 @@
 package com.nhom05.cache.server;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -53,6 +55,14 @@ public final class KeyValueStore implements AutoCloseable {
         return lastTimestamp.updateAndGet(prev -> Math.max(now, prev + 1));
     }
 
+    /**
+     * Ghi nhan timestamp nhan tu server khac: lan ghi cuc bo tiep theo luon co timestamp lon hon,
+     * ke ca khi dong ho 2 may lech nhau (neu khong, ban ghi moi cua minh bi server du phong coi la cu).
+     */
+    private void observe(long timestamp) {
+        lastTimestamp.accumulateAndGet(timestamp, Math::max);
+    }
+
     /** Ghi hoac ghi de 1 key, dat lai TTL. Tra ve timestamp cua lan ghi (de replicate). */
     public long put(String key, String value) {
         long ts = nextTimestamp();
@@ -84,7 +94,9 @@ public final class KeyValueStore implements AutoCloseable {
     /** Nhu delete(key) nhung dung timestamp do caller cap (de replicate cung timestamp). */
     public boolean delete(String key, long timestamp) {
         tombstones.merge(key, timestamp, Math::max);
-        return store.remove(key) != null;
+        CacheEntry removed = store.remove(key);
+        // Key da het han TTL (chua kip bi sweeper don) coi nhu khong ton tai -> NOTFOUND
+        return removed != null && !removed.isExpired(System.currentTimeMillis());
     }
 
     /**
@@ -95,6 +107,7 @@ public final class KeyValueStore implements AutoCloseable {
      * @return true neu da ghi, false neu bi bo qua do timestamp cu
      */
     public boolean putReplicated(String key, String value, long timestamp) {
+        observe(timestamp);
         boolean[] applied = {false};
         store.compute(key, (k, existing) -> {
             Long deletedAt = tombstones.get(k);
@@ -121,6 +134,7 @@ public final class KeyValueStore implements AutoCloseable {
      * @return true neu da xoa 1 ban ghi ton tai
      */
     public boolean deleteReplicated(String key, long timestamp) {
+        observe(timestamp);
         tombstones.merge(key, timestamp, Math::max);
         boolean[] removed = {false};
         store.compute(key, (k, existing) -> {
@@ -131,6 +145,23 @@ public final class KeyValueStore implements AutoCloseable {
             return existing;
         });
         return removed[0];
+    }
+
+    /** 1 ban ghi con han dung de gui cho server vua phuc hoi (lenh SYNC cua Module 3). */
+    public record Snapshot(String key, String value, long timestamp) {
+    }
+
+    /** Chup lai cac ban ghi chua het han, kem timestamp ghi de ben nhan giai quyet xung dot. */
+    public List<Snapshot> snapshot() {
+        long now = System.currentTimeMillis();
+        List<Snapshot> result = new ArrayList<>();
+        for (Map.Entry<String, CacheEntry> e : store.entrySet()) {
+            CacheEntry entry = e.getValue();
+            if (!entry.isExpired(now)) {
+                result.add(new Snapshot(e.getKey(), entry.value(), entry.timestamp()));
+            }
+        }
+        return result;
     }
 
     public int size() {

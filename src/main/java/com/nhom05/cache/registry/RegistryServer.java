@@ -42,6 +42,7 @@ public class RegistryServer {
     public static final int DEFAULT_PORT = 6000;
     public static final long HEARTBEAT_TIMEOUT_MS = 9000L; // 9 giay = 3 lan chu ky 3s
     public static final long HEALTH_CHECK_INTERVAL_MS = 1000L; // Quet moi 1 giay
+    static final int IDLE_TIMEOUT_MS = 60_000;
 
     private final int port;
     private final long heartbeatTimeoutMs;
@@ -109,6 +110,12 @@ public class RegistryServer {
      * Xu ly ket noi tu CacheServer, Client hoac GUI Dashboard.
      */
     void handleConnection(Socket socket) {
+        try {
+            // Ket noi (vd telnet) im lang qua lau thi dong, tranh giu thread cua pool mai mai
+            socket.setSoTimeout(IDLE_TIMEOUT_MS);
+        } catch (IOException e) {
+            LOGGER.fine(() -> "[REGISTRY] Khong dat duoc timeout: " + e.getMessage());
+        }
         try (socket;
              BufferedReader reader = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));

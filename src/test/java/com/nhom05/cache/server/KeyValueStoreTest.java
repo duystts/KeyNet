@@ -145,4 +145,33 @@ class KeyValueStoreTest {
         assertFalse(store.putReplicated("k", "stale", ts + 5));
         assertNull(store.get("k"));
     }
+
+    @Test
+    void deletingExpiredKeyReportsNotFound() throws InterruptedException {
+        store = new KeyValueStore(1, 100);
+        store.put("k", "v");
+        Thread.sleep(1100);
+        assertFalse(store.delete("k"), "key het han phai coi nhu khong ton tai");
+    }
+
+    @Test
+    void snapshotHasLiveEntriesWithTimestamps() {
+        store = new KeyValueStore(60, 100);
+        long ta = store.put("a", "1");
+        long tb = store.put("b", "2");
+        store.delete("a");
+        var snap = store.snapshot();
+        assertEquals(1, snap.size());
+        assertEquals(new KeyValueStore.Snapshot("b", "2", tb), snap.get(0));
+        assertTrue(tb > ta);
+    }
+
+    @Test
+    void localWriteAfterReplicaFromFastClockIsStillNewer() {
+        store = new KeyValueStore(60, 100);
+        long future = System.currentTimeMillis() + 60_000; // dong ho server kia chay nhanh 1 phut
+        store.putReplicated("k", "from-peer", future);
+        long ts = store.put("k", "local");
+        assertTrue(ts > future, "lan ghi sau phai co timestamp lon hon ban da nhan");
+    }
 }

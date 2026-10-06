@@ -31,7 +31,7 @@ Mỗi thành viên chỉ code trong package của module mình. Thay đổi tron
 ### Build & chạy
 
 ```bash
-mvn test              # chạy toàn bộ test JUnit (56 test)
+mvn test              # chạy toàn bộ test JUnit (67 test)
 mvn package            # build target/keynet.jar
 java -jar target/keynet.jar config/config.properties 0   # tham số 2 = serverIndex
 ```
@@ -53,6 +53,8 @@ DELETE|username
 - Xung đột: bản ghi có `timestamp` lớn hơn thắng (last-write-wins). `KeyValueStore` giữ "tombstone" cho key đã xóa để lệnh PUT cũ đến trễ không làm sống lại key.
 - Bản sao nhận TTL mặc định tính từ lúc nhận (message đồng bộ không mang TTL).
 - Server chỉ bật replication khi cluster có từ 2 server trở lên.
+- **Phục hồi sau sự cố:** server khởi động lại (kho RAM trống) gửi `SYNC` tới server kề sau (server dự phòng của nó, giữ bản sao và các lần ghi client đã failover sang) và server kề trước (nó là dự phòng của server đó). Server được hỏi trả từng dòng `REPLICATE|PUT|key|value|timestamp`, kết thúc bằng `END`. Server chỉ giữ các key nó phụ trách, bản có `timestamp` lớn hơn thắng. Việc đồng bộ chạy trước khi mở port client (trong lúc đó client tự failover) và chạy lại 1 lần ngay sau khi mở port.
+- Quá tải: hết thread (50) và hàng đợi (200) thì server trả `ERROR|E004|Server overloaded`, client tự failover.
 
 ## Module 4 — Monitoring / Registry + Health Check (Nguyễn Trần Tuấn Anh)
 

@@ -27,6 +27,8 @@ public class HeartbeatSender {
     private final RegistryClient client;
     private ScheduledExecutorService scheduler;
     private volatile boolean running = false;
+    /** Lan gui truoc co thanh cong khong - chi ghi log khi trang thai doi, tranh spam moi 3 giay. */
+    private volatile boolean lastOk = true;
 
     private IntSupplier keyCountSupplier = () -> 0;
     private LongSupplier requestCountSupplier = () -> 0L;
@@ -84,11 +86,16 @@ public class HeartbeatSender {
         long reqs = requestCountSupplier.getAsLong();
         boolean ok = client.sendHeartbeat(serverIndex, selfHost, selfPort, keys, reqs);
         if (ok) {
+            if (!lastOk) {
+                LOGGER.info(() -> "[HEARTBEAT-SENDER] Server #" + serverIndex + " da ket noi lai Registry.");
+            }
             LOGGER.fine(() -> "[HEARTBEAT-SENDER] Heartbeat Server #" + serverIndex + " thanh cong (ACK).");
-        } else {
+        } else if (lastOk) {
             LOGGER.warning(() -> "[HEARTBEAT-SENDER] Khong the gui heartbeat Server #" + serverIndex
-                    + " toi Registry tai " + registryHost + ":" + registryPort);
+                    + " toi Registry tai " + registryHost + ":" + registryPort + " (se thu lai moi "
+                    + intervalSeconds + "s, chi bao lai khi ket noi duoc)");
         }
+        lastOk = ok;
         return ok;
     }
 

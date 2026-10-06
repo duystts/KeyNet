@@ -21,6 +21,11 @@ import java.util.logging.Logger;
 final class ClientHandler implements Runnable {
 
     private static final Logger LOGGER = Logger.getLogger(ClientHandler.class.getName());
+    /**
+     * Ket noi mo ma khong gui request trong thoi gian nay se bi dong, de client treo
+     * (vd telnet bo quen) khong giu thread cua pool mai mai.
+     */
+    static final int IDLE_TIMEOUT_MS = 30_000;
 
     private final Socket socket;
     private final KeyValueStore store;
@@ -38,6 +43,11 @@ final class ClientHandler implements Runnable {
 
     @Override
     public void run() {
+        try {
+            socket.setSoTimeout(IDLE_TIMEOUT_MS);
+        } catch (IOException e) {
+            LOGGER.fine(() -> "Khong dat duoc timeout: " + e.getMessage());
+        }
         try (socket;
              BufferedReader in = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));

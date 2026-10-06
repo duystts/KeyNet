@@ -23,7 +23,9 @@ public final class HashUtil {
         if (n <= 0) {
             throw new IllegalArgumentException("So luong server (n) phai > 0");
         }
-        return Math.abs(key.hashCode()) % n;
+        // Lay mod truoc roi moi abs: Math.abs(Integer.MIN_VALUE) van am (tran so),
+        // nen Math.abs(hash) % n co the ra chi so am. Ket qua van bang |hash| mod n.
+        return Math.abs(key.hashCode() % n);
     }
 
     /** Server du phong (dung cho replication) cua mot serverIndex. */
