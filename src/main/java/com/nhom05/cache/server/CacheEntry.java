@@ -2,9 +2,13 @@ package com.nhom05.cache.server;
 
 /**
  * Mot ban ghi trong Key-Value Store: gia tri + thoi diem het han (TTL)
+ * + timestamp ghi (dung de giai quyet xung dot khi replication, muc 5 dac ta)
  * + thoi diem truy cap gan nhat (dung cho LRU eviction).
+ *
+ * Giu package-private: chi KeyValueStore duoc thao tac truc tiep, cac module khac
+ * (vd Replication) di qua API cua KeyValueStore de khong lam hong TTL/LRU/maxEntries.
  */
-public final class CacheEntry {
+final class CacheEntry {
 
     private final String value;
     private final long expireAtMillis;
@@ -14,34 +18,30 @@ public final class CacheEntry {
     // va lam sai thu tu LRU. nanoTime chi dung noi bo, khong dung de hien thi/luu tru.
     private volatile long lastAccessNanos;
 
-    public CacheEntry(String value, long expireAtMillis) {
-        this(value, expireAtMillis, System.currentTimeMillis());
-    }
-
-    public CacheEntry(String value, long expireAtMillis, long timestamp) {
+    CacheEntry(String value, long expireAtMillis, long timestamp) {
         this.value = value;
         this.expireAtMillis = expireAtMillis;
         this.timestamp = timestamp;
         this.lastAccessNanos = System.nanoTime();
     }
 
-    public String value() {
+    String value() {
         return value;
     }
 
-    public boolean isExpired(long now) {
-        return now >= expireAtMillis;
-    }
-
-    public long lastAccessNanos() {
-        return lastAccessNanos;
-    }
-
-    public long getTimestamp() {
+    long timestamp() {
         return timestamp;
     }
 
-    public void touch() {
+    boolean isExpired(long now) {
+        return now >= expireAtMillis;
+    }
+
+    long lastAccessNanos() {
+        return lastAccessNanos;
+    }
+
+    void touch() {
         this.lastAccessNanos = System.nanoTime();
     }
 }

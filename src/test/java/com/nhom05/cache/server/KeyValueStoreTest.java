@@ -114,4 +114,35 @@ class KeyValueStoreTest {
 
         assertEquals(threads * opsPerThread, store.size());
     }
+
+    @Test
+    void localTimestampsAreStrictlyIncreasing() {
+        store = new KeyValueStore(60, 100);
+        long prev = 0;
+        for (int i = 0; i < 1000; i++) {
+            long ts = store.put("k", "v" + i);
+            assertTrue(ts > prev, "timestamp phai tang nghiem ngat");
+            prev = ts;
+        }
+    }
+
+    @Test
+    void replicatedPutIsIgnoredWhenOlderThanLocalWrite() {
+        store = new KeyValueStore(60, 100);
+        long ts = store.put("k", "local");
+        assertFalse(store.putReplicated("k", "old", ts - 1));
+        assertFalse(store.putReplicated("k", "same", ts));
+        assertEquals("local", store.get("k"));
+        assertTrue(store.putReplicated("k", "newer", ts + 1));
+        assertEquals("newer", store.get("k"));
+    }
+
+    @Test
+    void localDeleteBlocksLateReplicatedPut() {
+        store = new KeyValueStore(60, 100);
+        long ts = store.put("k", "v");
+        store.delete("k", ts + 10);
+        assertFalse(store.putReplicated("k", "stale", ts + 5));
+        assertNull(store.get("k"));
+    }
 }
