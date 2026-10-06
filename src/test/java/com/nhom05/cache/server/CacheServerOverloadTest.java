@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Server qua tai phai tra ERROR|E004 (muc 3 dac ta) de client failover, khong im lang treo. */
+@SuppressWarnings("resource")
 class CacheServerOverloadTest {
 
     private static final int PORT = 6202;

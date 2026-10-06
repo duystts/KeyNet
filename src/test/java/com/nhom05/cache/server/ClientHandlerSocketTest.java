@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Doc request qua socket that: dong qua dai, CRLF (telnet), ket noi rong. */
+@SuppressWarnings("resource")
 class ClientHandlerSocketTest {
 
     private static final int PORT = 6203;
