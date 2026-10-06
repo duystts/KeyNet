@@ -165,4 +165,19 @@ class RegistryServerTest {
             tcpRegistry.shutdown();
         }
     }
+
+    @Test
+    void testRestartedServerResetsMetrics() {
+        // Server chet roi khoi dong lai: kho rong, bo dem request ve 0 -> dashboard phai hien 0, khong giu so cu
+        registry.handleCommand("HEARTBEAT|0|127.0.0.1|5001|42|100");
+        registry.handleCommand("HEARTBEAT|0|127.0.0.1|5001|0|0");
+        assertEquals("STATS|0:UP:0:0", registry.handleCommand("STATS"));
+    }
+
+    @Test
+    void testHeartbeatWithoutMetricsKeepsPreviousMetrics() {
+        registry.handleCommand("HEARTBEAT|0|127.0.0.1|5001|42|100");
+        registry.handleCommand("HEARTBEAT|0|127.0.0.1|5001");
+        assertEquals("STATS|0:UP:42:100", registry.handleCommand("STATS"));
+    }
 }

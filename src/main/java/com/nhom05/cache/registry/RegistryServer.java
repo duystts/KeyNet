@@ -169,13 +169,16 @@ public class RegistryServer {
 
             int keyCount = 0;
             long requestCount = 0;
+            boolean hasMetrics = false;
             if (parts.length >= 6) {
                 try {
                     keyCount = Integer.parseInt(parts[4].trim());
                     requestCount = Long.parseLong(parts[5].trim());
+                    hasMetrics = true;
                 } catch (NumberFormatException ignored) {
                 }
             }
+            final boolean finalHasMetrics = hasMetrics;
 
             final int finalKeyCount = keyCount;
             final long finalReqCount = requestCount;
@@ -187,7 +190,9 @@ public class RegistryServer {
                     return new ServerNode(idx, host, port, finalKeyCount, finalReqCount);
                 } else {
                     boolean wasDown = existing.getStatus() == ServerNode.Status.DOWN;
-                    if (finalKeyCount > 0 || finalReqCount > 0) {
+                    // Co gui thong so thi luon cap nhat, ke ca khi = 0 (vd da xoa het key),
+                    // neu khong dashboard se giu mai so cu.
+                    if (finalHasMetrics) {
                         existing.recordHeartbeat(host, port, finalKeyCount, finalReqCount);
                     } else {
                         existing.recordHeartbeat(host, port);

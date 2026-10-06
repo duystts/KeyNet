@@ -23,6 +23,9 @@ import java.util.Properties;
  *       cache.serverIndex=0
  *       cache.ttlSeconds=60
  *       cache.maxEntries=1000
+ *  3) Dia chi Registry (Module 4, muc 6 dac ta) ma Cache Server gui heartbeat toi:
+ *       registry.host=127.0.0.1
+ *       registry.port=6000
  */
 public final class ServerConfig {
 
@@ -33,12 +36,19 @@ public final class ServerConfig {
     private final int serverIndex;
     private final long ttlSeconds;
     private final int maxEntries;
+    private final ServerAddress registry;
 
-    private ServerConfig(List<ServerAddress> servers, int serverIndex, long ttlSeconds, int maxEntries) {
+    private ServerConfig(List<ServerAddress> servers, int serverIndex, long ttlSeconds, int maxEntries,
+                         ServerAddress registry) {
+        if (!servers.isEmpty() && (serverIndex < 0 || serverIndex >= servers.size())) {
+            throw new IllegalArgumentException("cache.serverIndex=" + serverIndex
+                    + " nam ngoai danh sach " + servers.size() + " server");
+        }
         this.servers = servers;
         this.serverIndex = serverIndex;
         this.ttlSeconds = ttlSeconds;
         this.maxEntries = maxEntries;
+        this.registry = registry;
     }
 
     public static ServerConfig load(String path) throws IOException {
@@ -62,8 +72,19 @@ public final class ServerConfig {
         int serverIndex = Integer.parseInt(props.getProperty("cache.serverIndex", "0"));
         long ttlSeconds = Long.parseLong(props.getProperty("cache.ttlSeconds", "60"));
         int maxEntries = Integer.parseInt(props.getProperty("cache.maxEntries", "1000"));
+        ServerAddress registry = new ServerAddress(
+                props.getProperty("registry.host", "127.0.0.1"),
+                Integer.parseInt(props.getProperty("registry.port", "6000")));
 
-        return new ServerConfig(servers, serverIndex, ttlSeconds, maxEntries);
+        return new ServerConfig(servers, serverIndex, ttlSeconds, maxEntries, registry);
+    }
+
+    /**
+     * Ban sao config voi serverIndex khac - de chay nhieu instance tu cung 1 file config:
+     *   java -jar keynet.jar config/config.properties 1
+     */
+    public ServerConfig withServerIndex(int index) {
+        return new ServerConfig(servers, index, ttlSeconds, maxEntries, registry);
     }
 
     public List<ServerAddress> servers() {
@@ -103,5 +124,10 @@ public final class ServerConfig {
 
     public int maxEntries() {
         return maxEntries;
+    }
+
+    /** Dia chi RegistryServer (mac dinh 127.0.0.1:6000). */
+    public ServerAddress registry() {
+        return registry;
     }
 }

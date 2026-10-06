@@ -3,6 +3,7 @@ package com.nhom05.cache.server;
 import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig;
+import com.nhom05.cache.registry.HeartbeatSender;
 import com.nhom05.cache.replication.ReplicationHandler;
 
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -20,8 +22,9 @@ import java.util.logging.Logger;
  * Lang nghe TCP tren 1 port, moi ket noi client duoc giao cho 1 thread
  * trong thread pool co dinh xu ly (xem muc 1 va 8 cua dac ta giao thuc).
  *
- * Chay: java -jar keynet.jar config/config.properties
- * (mac dinh doc config/config.properties neu khong truyen tham so)
+ * Chay: java -jar keynet.jar [config/config.properties] [serverIndex]
+ * (mac dinh doc config/config.properties; serverIndex ghi de cache.serverIndex trong file
+ * de chay nhieu instance tu cung 1 file config)
  */
 public final class CacheServer {
 
@@ -34,6 +37,8 @@ public final class CacheServer {
     private volatile boolean running = true;
     private volatile ServerSocket listener;
     private volatile Replicator replicator = Replicator.NOOP;
+    /** So request da nhan (connection-per-request), gui kem heartbeat cho dashboard (Module 5). */
+    private final LongAdder requestCount = new LongAdder();
 
     public CacheServer(int port, long ttlSeconds, int maxEntries) {
         this.port = port;
@@ -44,6 +49,11 @@ public final class CacheServer {
     /** Kho du lieu cua server nay (Module 3 dung de gan listener nhan REPLICATE). */
     public KeyValueStore store() {
         return store;
+    }
+
+    /** Tong so request client da gui toi server nay ke tu khi khoi dong. */
+    public long requestCount() {
+        return requestCount.sum();
     }
 
     /** Gan Module 3 (Replication) vao server; goi truoc start(). */
@@ -58,6 +68,7 @@ public final class CacheServer {
             while (running) {
                 try {
                     Socket client = serverSocket.accept();
+                    requestCount.increment();
                     pool.execute(new ClientHandler(client, store, replicator));
                 } catch (RejectedExecutionException e) {
                     // Thread pool qua tai - khong the xu ly them ket noi luc nay.
@@ -94,7 +105,10 @@ public final class CacheServer {
     public static void main(String[] args) {
         String configPath = args.length > 0 ? args[0] : "config/config.properties";
         try {
-            ServerConfig config = ServerConfig.load(configPath);
+            ServerConfig loaded = ServerConfig.load(configPath);
+            ServerConfig config = args.length > 1
+                    ? loaded.withServerIndex(Integer.parseInt(args[1]))
+                    : loaded;
             ServerConfig.ServerAddress self = config.self();
 
             CacheServer server = new CacheServer(self.port(), config.ttlSeconds(), config.maxEntries());
@@ -106,7 +120,16 @@ public final class CacheServer {
                 replication.startListener(config.replicationPort(config.serverIndex()));
                 server.setReplicator(replication);
             }
-            Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
+            // Module 4: heartbeat dinh ky toi Registry kem so key / so request (cho STATS)
+            ServerConfig.ServerAddress registry = config.registry();
+            HeartbeatSender heartbeat = new HeartbeatSender(registry.host(), registry.port(),
+                    config.serverIndex(), self.host(), self.port());
+            heartbeat.setMetricsSuppliers(server.store()::size, server::requestCount);
+            heartbeat.start();
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                heartbeat.stop();
+                server.shutdown();
+            }));
 
             LOGGER.info(() -> "KeyNet CacheServer #" + config.serverIndex()
                     + " - ttl=" + config.ttlSeconds() + "s, maxEntries=" + config.maxEntries());
@@ -114,6 +137,9 @@ public final class CacheServer {
 
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Khong the doc file cau hinh: " + configPath, e);
+            System.exit(1);
+        } catch (IllegalArgumentException e) {
+            LOGGER.severe("serverIndex khong hop le: " + e.getMessage());
             System.exit(1);
         }
     }
