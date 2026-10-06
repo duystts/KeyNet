@@ -66,6 +66,43 @@ public final class ProtocolParser {
         }
     }
 
+    /** Ket qua parse 1 dong REPLICATE (muc 5 dac ta). value = null voi lenh DELETE. */
+    public record ParsedReplicate(boolean isPut, String key, String value, long timestamp) {
+    }
+
+    /**
+     * Parse lenh dong bo giua server:
+     *   REPLICATE|PUT|key|value|timestamp   REPLICATE|DELETE|key|timestamp
+     * Tra ve null neu sai cu phap, thieu/thua truong, key/value khong hop le
+     * hoac timestamp khong phai so (caller tra ERROR|E001).
+     */
+    public static ParsedReplicate parseReplicate(String line) {
+        if (line == null) {
+            return null;
+        }
+        String[] p = line.strip().split(DELIMITER, -1);
+        if (p.length < 4 || !"REPLICATE".equalsIgnoreCase(p[0])) {
+            return null;
+        }
+        try {
+            if ("PUT".equalsIgnoreCase(p[1]) && p.length == 5) {
+                if (!isKeyValid(p[2]) || !isValueValid(p[3])) {
+                    return null;
+                }
+                return new ParsedReplicate(true, p[2], p[3], Long.parseLong(p[4]));
+            }
+            if ("DELETE".equalsIgnoreCase(p[1]) && p.length == 4) {
+                if (!isKeyValid(p[2])) {
+                    return null;
+                }
+                return new ParsedReplicate(false, p[2], null, Long.parseLong(p[3]));
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return null;
+    }
+
     public static boolean isKeyValid(String key) {
         return key != null && !key.isEmpty() && key.length() <= MAX_KEY_LENGTH
                 && !key.contains("|") && !key.contains("\n");
