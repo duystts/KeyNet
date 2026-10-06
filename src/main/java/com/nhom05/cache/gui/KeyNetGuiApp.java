@@ -383,6 +383,67 @@ public class KeyNetGuiApp extends JFrame {
             }
         });
 
+        // Single-click Selection & Right-click Popup Menu for keyTable (Interactive Table Actions)
+        JPopupMenu popupMenu = new JPopupMenu();
+        JMenuItem getMenuItem = new JMenuItem("⚡ GET (Đọc giá trị)");
+        JMenuItem infoMenuItem = new JMenuItem("🔍 INFO (Định tuyến)");
+        JMenuItem delMenuItem = new JMenuItem("🗑️ DELETE (Xóa Key)");
+        JMenuItem selectMenuItem = new JMenuItem("✏️ Nạp vào Form (Sửa / Ghi đè)");
+
+        popupMenu.add(getMenuItem);
+        popupMenu.add(infoMenuItem);
+        popupMenu.add(delMenuItem);
+        popupMenu.addSeparator();
+        popupMenu.add(selectMenuItem);
+
+        Runnable fillFormAction = () -> {
+            int selRow = keyTable.getSelectedRow();
+            if (selRow >= 0) {
+                String k = String.valueOf(keyTable.getValueAt(selRow, 0));
+                KeyExplorerItem item = trackedKeys.get(k);
+                if (item != null) {
+                    keyField.setText(item.key());
+                    valueField.setText(item.value());
+                    ttlSpinner.setValue(item.ttlSeconds());
+                } else {
+                    keyField.setText(k);
+                }
+                executeClientAction("INFO");
+            }
+        };
+
+        keyTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                int row = keyTable.rowAtPoint(e.getPoint());
+                if (row >= 0) {
+                    keyTable.setRowSelectionInterval(row, row);
+                    fillFormAction.run();
+                }
+            }
+
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) { showPopup(e); }
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) { showPopup(e); }
+
+            private void showPopup(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int row = keyTable.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        keyTable.setRowSelectionInterval(row, row);
+                        fillFormAction.run();
+                        popupMenu.show(e.getComponent(), e.getX(), e.getY());
+                    }
+                }
+            }
+        });
+
+        getMenuItem.addActionListener(e -> executeClientAction("GET"));
+        infoMenuItem.addActionListener(e -> executeClientAction("INFO"));
+        delMenuItem.addActionListener(e -> executeClientAction("DELETE"));
+        selectMenuItem.addActionListener(e -> fillFormAction.run());
+
         JScrollPane keyScroll = new JScrollPane(keyTable);
         keyScroll.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(CARD_BORDER), "🔍 Cache Key Explorer (Live RAM Keys & TTL)", 0, 0, new Font("Segoe UI", Font.BOLD, 12), TEXT_LIGHT));
         centerSplit.add(keyScroll);
