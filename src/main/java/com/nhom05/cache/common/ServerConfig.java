@@ -78,6 +78,21 @@ public final class ServerConfig {
         return serverIndex;
     }
 
+    /**
+     * Port rieng cho kenh replication giua cac server (muc 5 dac ta: "port rieng,
+     * khac port phuc vu client"). Quy uoc: port phuc vu client + 1000.
+     */
+    public static final int REPLICATION_PORT_OFFSET = 1000;
+
+    public int replicationPort(int index) {
+        return servers.get(index).port() + REPLICATION_PORT_OFFSET;
+    }
+
+    /** Chi so server du phong cua server nay: (serverIndex + 1) mod N. */
+    public int backupIndex() {
+        return (serverIndex + 1) % servers.size();
+    }
+
     public ServerAddress self() {
         return servers.get(serverIndex);
     }

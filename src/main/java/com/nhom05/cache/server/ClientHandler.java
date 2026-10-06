@@ -24,10 +24,16 @@ final class ClientHandler implements Runnable {
 
     private final Socket socket;
     private final KeyValueStore store;
+    private final Replicator replicator;
 
     ClientHandler(Socket socket, KeyValueStore store) {
+        this(socket, store, Replicator.NOOP);
+    }
+
+    ClientHandler(Socket socket, KeyValueStore store, Replicator replicator) {
         this.socket = socket;
         this.store = store;
+        this.replicator = replicator;
     }
 
     @Override
@@ -67,7 +73,8 @@ final class ClientHandler implements Runnable {
             return ProtocolParser.error(ErrorCode.E003);
         }
         try {
-            store.put(key, value);
+            long ts = store.put(key, value);
+            replicateQuietly(() -> replicator.replicatePut(key, value, ts));
             return ProtocolParser.ok();
         } catch (RuntimeException e) {
             LOGGER.log(Level.SEVERE, "Loi noi bo khi PUT: " + e.getMessage(), e);
@@ -93,11 +100,22 @@ final class ClientHandler implements Runnable {
             return ProtocolParser.error(ErrorCode.E002);
         }
         try {
-            boolean existed = store.delete(key);
+            long ts = store.nextTimestamp();
+            boolean existed = store.delete(key, ts);
+            replicateQuietly(() -> replicator.replicateDelete(key, ts));
             return existed ? ProtocolParser.ok() : ProtocolParser.notFound();
         } catch (RuntimeException e) {
             LOGGER.log(Level.SEVERE, "Loi noi bo khi DELETE: " + e.getMessage(), e);
             return ProtocolParser.error(ErrorCode.E005);
+        }
+    }
+
+    /** Replication bat dong bo: loi o day khong bao gio duoc anh huong response tra ve client. */
+    private static void replicateQuietly(Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, "Replication that bai (bo qua): " + e.getMessage(), e);
         }
     }
 }
