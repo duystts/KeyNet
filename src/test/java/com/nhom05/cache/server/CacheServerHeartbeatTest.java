@@ -16,6 +16,7 @@ import java.util.function.Supplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Cache Server gui heartbeat kem so key / so request toi Registry (Module 1 + 4, cho dashboard Module 5). */
+@SuppressWarnings("resource")
 class CacheServerHeartbeatTest {
 
     private static final int CACHE_PORT = 6201;

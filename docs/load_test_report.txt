@@ -1,0 +1,177 @@
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 12:14:08
+Số luồng đồng thời     : 5 threads
+Tổng số Requests       : 100
+Số request thành công  : 90 (90.00%)
+Số request thất bại    : 10 (10.00%)
+Tổng thời gian thực thi: 0.298 giây
+Throughput (Chịu tải)  : 335.57 ops/sec
+Độ trễ trung bình      : 14.04 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 132 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 12:57:31
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 1400 (70.00%)
+Số request thất bại    : 600 (30.00%)
+Tổng thời gian thực thi: 2.108 giây
+Throughput (Chịu tải)  : 948.77 ops/sec
+Độ trễ trung bình      : 20.84 ms
+Độ trễ nhỏ nhất (Min)  : 1 ms
+Độ trễ lớn nhất (Max)  : 173 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 13:02:54
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 1400 (70.00%)
+Số request thất bại    : 600 (30.00%)
+Tổng thời gian thực thi: 2.392 giây
+Throughput (Chịu tải)  : 836.12 ops/sec
+Độ trễ trung bình      : 23.56 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 173 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 13:13:22
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 2000 (100.00%)
+Số request thất bại    : 0 (0.00%)
+Tổng thời gian thực thi: 0.428 giây
+Throughput (Chịu tải)  : 4672.90 ops/sec
+Độ trễ trung bình      : 4.15 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 78 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 13:44:33
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 2000 (100.00%)
+Số request thất bại    : 0 (0.00%)
+Tổng thời gian thực thi: 0.269 giây
+Throughput (Chịu tải)  : 7434.94 ops/sec
+Độ trễ trung bình      : 2.62 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 43 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 13:51:07
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 1400 (70.00%)
+Số request thất bại    : 600 (30.00%)
+Tổng thời gian thực thi: 1.186 giây
+Throughput (Chịu tải)  : 1686.34 ops/sec
+Độ trễ trung bình      : 11.65 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 120 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 14:25:41
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 1400 (70.00%)
+Số request thất bại    : 600 (30.00%)
+Tổng thời gian thực thi: 1.018 giây
+Throughput (Chịu tải)  : 1964.64 ops/sec
+Độ trễ trung bình      : 10.02 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 94 ms
+=================================================
+
+=================================================
+       BÁO CÁO BENCHMARK DỮ LIỆU CỤM PHÂN TÁN     
+=================================================
+Thời gian thực hiện : 2026-10-06 14:26:36
+Số luồng đồng thời  : 20 threads
+Tổng số Requests    : 2000
+Chịu tải (Throughput): 5865.10 ops/sec
+Độ trễ trung bình   : 3.35 ms
+Tỷ lệ thành công    : 100.00 %
+=================================================
+
+=================================================
+       BÁO CÁO BENCHMARK DỮ LIỆU CỤM PHÂN TÁN     
+=================================================
+Thời gian thực hiện : 2026-10-06 14:26:36
+Số luồng đồng thời  : 20 threads
+Tổng số Requests    : 2000
+Chịu tải (Throughput): 5865.10 ops/sec
+Độ trễ trung bình   : 3.35 ms
+Tỷ lệ thành công    : 100.00 %
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 14:36:10
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 2000 (100.00%)
+Số request thất bại    : 0 (0.00%)
+Tổng thời gian thực thi: 0.297 giây
+Throughput (Chịu tải)  : 6734.01 ops/sec
+Độ trễ trung bình      : 2.91 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 54 ms
+=================================================
+
+
+=================================================
+          BÁO CÁO KẾT QUẢ LOAD TEST              
+=================================================
+Thời gian thực hiện    : 2026-10-06 14:44:11
+Số luồng đồng thời     : 20 threads
+Tổng số Requests       : 2000
+Số request thành công  : 2000 (100.00%)
+Số request thất bại    : 0 (0.00%)
+Tổng thời gian thực thi: 0.274 giây
+Throughput (Chịu tải)  : 7299.27 ops/sec
+Độ trễ trung bình      : 2.67 ms
+Độ trễ nhỏ nhất (Min)  : 0 ms
+Độ trễ lớn nhất (Max)  : 53 ms
+=================================================
+
+=================================================
+       BÁO CÁO BENCHMARK DỮ LIỆU CỤM PHÂN TÁN     
+=================================================
+Thời gian thực hiện : 2026-10-06 17:25:21
+Số luồng đồng thời  : 20 threads
+Tổng số Requests    : 2000
+Chịu tải (Throughput): 10416.67 ops/sec
+Độ trễ trung bình   : 1.84 ms
+Tỷ lệ thành công    : 100.00 %
+=================================================
+

@@ -16,6 +16,7 @@ import java.util.function.Supplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Test Module 3: giai quyet xung dot (unit) + dong bo that giua 2 server (tich hop). */
+@SuppressWarnings("resource")
 class ReplicationHandlerTest {
 
     private static final int PORT_A = 6101, REPL_A = 7101;

@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Module 3 - "gia lap 1 server chet roi phuc hoi" (bang phan cong): server #0 khoi dong lai
  * voi kho trong phai lay lai du lieu tu server ke ben qua SYNC, ban moi hon (timestamp) thang.
  */
+@SuppressWarnings("resource")
 class RecoveryTest {
 
     // 3 server: client port 6401..6403 -> replication port 7401..7403

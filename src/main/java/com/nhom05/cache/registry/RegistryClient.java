@@ -80,7 +80,7 @@ public class RegistryClient {
             return sendCommand("STATS");
         } catch (IOException e) {
             LOGGER.warning(() -> "[REGISTRY-CLIENT] Loi khi lay STATS tu Registry: " + e.getMessage());
-            return "STATS|";
+            return null;
         }
     }
 

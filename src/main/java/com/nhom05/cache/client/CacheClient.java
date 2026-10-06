@@ -11,11 +11,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Objects;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -35,6 +32,7 @@ public class CacheClient {
 
     private final HashRouter router;
     private final int timeoutMs;
+    private volatile java.util.Set<Integer> simulatedDeadNodes;
 
     public CacheClient(ServerConfig config) {
         this(config.servers(), DEFAULT_TIMEOUT_MS);
@@ -47,6 +45,10 @@ public class CacheClient {
     public CacheClient(List<ServerAddress> servers, int timeoutMs) {
         this.router = new HashRouter(servers);
         this.timeoutMs = timeoutMs;
+    }
+
+    public void setSimulatedDeadNodes(java.util.Set<Integer> simulatedDeadNodes) {
+        this.simulatedDeadNodes = simulatedDeadNodes;
     }
 
     public static CacheClient loadFromConfig(String configPath) throws IOException {
@@ -146,6 +148,12 @@ public class CacheClient {
      * Mo socket TCP, gui 1 dong request va doc 1 dong response.
      */
     private String sendToSocket(ServerAddress server, String requestLine) throws IOException {
+        if (simulatedDeadNodes != null) {
+            int index = router.getServers().indexOf(server);
+            if (index >= 0 && simulatedDeadNodes.contains(index)) {
+                throw new IOException("Connection refused: Simulated Dead Node #" + index);
+            }
+        }
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(server.host(), server.port()), timeoutMs);
             socket.setSoTimeout(timeoutMs);
