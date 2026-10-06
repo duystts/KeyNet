@@ -188,18 +188,22 @@ public final class KeyValueStore implements AutoCloseable {
     private void evictIfNeeded() {
         while (store.size() > maxEntries) {
             String oldestKey = null;
+            CacheEntry oldestEntry = null;
             long oldestAccess = Long.MAX_VALUE;
             for (Map.Entry<String, CacheEntry> e : store.entrySet()) {
                 long access = e.getValue().lastAccessNanos();
                 if (access < oldestAccess) {
                     oldestAccess = access;
                     oldestKey = e.getKey();
+                    oldestEntry = e.getValue();
                 }
             }
             if (oldestKey == null) {
                 break;
             }
-            store.remove(oldestKey);
+            // Xoa co dieu kien (dung entry da chon): neu trong luc quet co thread khac vua ghi
+            // lai key nay, remove(key) se xoa nham ban ghi moi -> client PUT OK roi GET NOTFOUND.
+            store.remove(oldestKey, oldestEntry);
             String evictedKey = oldestKey;
             LOGGER.fine(() -> "LRU evicted key: " + evictedKey);
         }

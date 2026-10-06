@@ -31,7 +31,7 @@ Mỗi thành viên chỉ code trong package của module mình. Thay đổi tron
 ### Build & chạy
 
 ```bash
-mvn test              # chạy toàn bộ test JUnit (67 test)
+mvn test              # chạy toàn bộ test JUnit (72 test)
 mvn package            # build target/keynet.jar
 java -jar target/keynet.jar config/config.properties 0   # tham số 2 = serverIndex
 ```
@@ -102,6 +102,7 @@ java -jar target/keynet.jar config/config.properties 2                    # term
   - `client.getRouter().getPrimaryServerIndex(key)` / `getReplicaServerIndex(i)` → server được chọn theo hash.
   - `new RegistryClient().getParsedStats()` → danh sách `(serverIndex, UP/DOWN, số key, số request)` cho dashboard; `checkStatus(i)` → `UP`/`DOWN`.
 - Port đang dùng: client 5001–5003, replication 6001–6003, Registry 6000.
+- Load test: mỗi server giữ tối đa `cache.maxEntries` key (gồm cả bản sao của server kề trước). Nếu số key đang dùng vượt mức này, LRU sẽ loại bớt và GET có thể trả `NOTFOUND` (đúng hành vi cache). Muốn đo "0 lỗi" thì tăng `cache.maxEntries` hoặc giảm số key.
 
 ## Yêu cầu
 

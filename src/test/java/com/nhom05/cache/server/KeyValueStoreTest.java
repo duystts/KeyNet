@@ -174,4 +174,46 @@ class KeyValueStoreTest {
         long ts = store.put("k", "local");
         assertTrue(ts > future, "lan ghi sau phai co timestamp lon hon ban da nhan");
     }
+
+    @Test
+    void lruUnderConcurrentChurnOnlyEvictsColdKeys() throws InterruptedException {
+        // Kho day 2000 key "lanh" (khong ai doc lai) -> chung luon cu hon key "nong" nen LRU chi
+        // duoc xoa key lanh. Thread filler them key lanh moi lien tuc (moi lan deu chay LRU) trong
+        // khi cac thread writer ghi lai key nong roi doc ngay: key nong khong bao gio duoc mat.
+        int capacity = 2000;
+        store = new KeyValueStore(60, capacity);
+        for (int i = 0; i < capacity; i++) {
+            store.put("cold" + i, "x");
+        }
+        java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicInteger lost = new java.util.concurrent.atomic.AtomicInteger();
+        Thread filler = new Thread(() -> {
+            for (int n = capacity; !stop.get(); n++) {
+                store.put("cold" + n, "x");
+            }
+        });
+        Thread[] writers = new Thread[4];
+        for (int t = 0; t < writers.length; t++) {
+            int tid = t;
+            writers[t] = new Thread(() -> {
+                for (int i = 0; i < 3000; i++) {
+                    String k = "hot" + tid;
+                    store.put(k, "v" + i);
+                    if (store.get(k) == null) {
+                        lost.incrementAndGet();
+                    }
+                }
+            });
+        }
+        filler.start();
+        for (Thread w : writers) {
+            w.start();
+        }
+        for (Thread w : writers) {
+            w.join();
+        }
+        stop.set(true);
+        filler.join();
+        assertEquals(0, lost.get(), "key vua ghi bi LRU xoa nham");
+    }
 }
