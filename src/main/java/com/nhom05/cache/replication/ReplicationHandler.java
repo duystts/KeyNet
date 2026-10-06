@@ -1,8 +1,10 @@
 package com.nhom05.cache.replication;
 
 import com.nhom05.cache.common.ErrorCode;
+import com.nhom05.cache.common.HashUtil;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ProtocolParser.ParsedReplicate;
+import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.server.KeyValueStore;
 import com.nhom05.cache.server.Replicator;
 
@@ -17,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -29,11 +32,20 @@ import java.util.logging.Logger;
  *     replication rieng. Loi gui chi ghi log, khong retry vo han, khong anh huong client.
  *  2) Nhan: listener tren port replication, ap dung lenh vao KeyValueStore qua
  *     putReplicated/deleteReplicated (timestamp lon hon thang).
+ *  3) Phuc hoi: server vua khoi dong lai (kho RAM trong) gui SYNC toi 2 server ke ben
+ *     de lay lai du lieu cua minh (server du phong giu ban sao + cac lan ghi client da
+ *     failover sang) va du lieu minh lam du phong (server phia truoc). Ghi qua
+ *     putReplicated nen ban ghi timestamp lon hon thang (muc 5 dac ta).
+ *
+ * Mo rong giao thuc kenh replication (chi giua cac server):
+ *   SYNC\n  ->  nhieu dong REPLICATE|PUT|key|value|timestamp\n ... ket thuc bang END\n
  */
 public final class ReplicationHandler implements Replicator {
 
     private static final Logger LOGGER = Logger.getLogger(ReplicationHandler.class.getName());
     private static final int TIMEOUT_MS = 2000;
+    static final String SYNC = "SYNC";
+    static final String SYNC_END = "END";
 
     private final KeyValueStore store;
     private final ExecutorService sender = Executors.newFixedThreadPool(4, daemon("repl-sender"));
@@ -135,8 +147,13 @@ public final class ReplicationHandler implements Replicator {
             socket.setSoTimeout(TIMEOUT_MS);
             BufferedReader in = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-            String response = apply(in.readLine());
+            String line = in.readLine();
             OutputStream out = socket.getOutputStream();
+            if (line != null && SYNC.equalsIgnoreCase(line.strip())) {
+                writeSnapshot(out);
+                return;
+            }
+            String response = apply(line);
             out.write((response + "\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
         } catch (IOException e) {
@@ -161,6 +178,85 @@ public final class ReplicationHandler implements Replicator {
             LOGGER.log(Level.SEVERE, "Loi noi bo khi dong bo: " + e.getMessage(), e);
             return ProtocolParser.error(ErrorCode.E005);
         }
+    }
+
+    /** Tra loi lenh SYNC: gui toan bo ban ghi con han, moi dong 1 REPLICATE|PUT, ket thuc bang END. */
+    private void writeSnapshot(OutputStream out) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        for (KeyValueStore.Snapshot e : store.snapshot()) {
+            sb.append("REPLICATE|PUT|").append(e.key()).append('|').append(e.value())
+                    .append('|').append(e.timestamp()).append('\n');
+        }
+        sb.append(SYNC_END).append('\n');
+        out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        out.flush();
+    }
+
+    // ---------------------------------------------------------------- Phuc hoi
+
+    /**
+     * Keo du lieu tu 1 server khac qua lenh SYNC, chi giu cac key ma keyFilter chap nhan.
+     *
+     * @return so ban ghi da ap dung (cu hon ban dang co thi bo qua), -1 neu khong ket noi duoc
+     */
+    public int syncFrom(String host, int replicationPort, Predicate<String> keyFilter) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, replicationPort), TIMEOUT_MS);
+            socket.setSoTimeout(TIMEOUT_MS * 5);
+            OutputStream out = socket.getOutputStream();
+            out.write((SYNC + "\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            int applied = 0;
+            String line;
+            while ((line = in.readLine()) != null && !SYNC_END.equals(line)) {
+                ParsedReplicate rec = ProtocolParser.parseReplicate(line);
+                if (rec != null && rec.isPut() && keyFilter.test(rec.key())
+                        && store.putReplicated(rec.key(), rec.value(), rec.timestamp())) {
+                    applied++;
+                }
+            }
+            if (line == null) {
+                LOGGER.warning(() -> "SYNC tu " + host + ":" + replicationPort + " bi ngat giua chung");
+            }
+            return applied;
+        } catch (IOException e) {
+            LOGGER.info(() -> "Khong SYNC duoc tu " + host + ":" + replicationPort
+                    + " (server do chua chay?) - " + e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * Phuc hoi du lieu cho server serverIndex sau khi khoi dong lai: lay tu server du phong
+     * (serverIndex+1) va server phia truoc (serverIndex-1) cac key co server chinh la
+     * serverIndex hoac serverIndex-1 (= nhung key server nay phai giu).
+     *
+     * @return tong so ban ghi da khoi phuc
+     */
+    public int recover(ServerConfig config) {
+        int n = config.serverCount();
+        if (n < 2) {
+            return 0;
+        }
+        int self = config.serverIndex();
+        int prev = (self - 1 + n) % n;
+        int next = HashUtil.replicaIndex(self, n);
+        Predicate<String> mine = key -> {
+            int primary = HashUtil.computeServerIndex(key, n);
+            return primary == self || primary == prev;
+        };
+        int total = 0;
+        for (int peer : prev == next ? new int[]{next} : new int[]{next, prev}) {
+            int got = syncFrom(config.servers().get(peer).host(), config.replicationPort(peer), mine);
+            if (got > 0) {
+                total += got;
+            }
+        }
+        int restored = total;
+        LOGGER.info(() -> "Phuc hoi: nhan " + restored + " ban ghi tu server ke ben");
+        return restored;
     }
 
     @Override

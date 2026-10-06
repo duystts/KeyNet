@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -21,6 +22,13 @@ import java.util.logging.Logger;
 final class ClientHandler implements Runnable {
 
     private static final Logger LOGGER = Logger.getLogger(ClientHandler.class.getName());
+    /**
+     * Ket noi mo ma khong gui request trong thoi gian nay se bi dong, de client treo
+     * (vd telnet bo quen) khong giu thread cua pool mai mai.
+     */
+    static final int IDLE_TIMEOUT_MS = 30_000;
+    /** Dong request dai nhat hop le: "PUT|" + key + "|" + value (muc 2 dac ta) + chut du phong. */
+    static final int MAX_LINE_LENGTH = ProtocolParser.MAX_KEY_LENGTH + ProtocolParser.MAX_VALUE_LENGTH + 16;
 
     private final Socket socket;
     private final KeyValueStore store;
@@ -38,19 +46,77 @@ final class ClientHandler implements Runnable {
 
     @Override
     public void run() {
+        try {
+            socket.setSoTimeout(IDLE_TIMEOUT_MS);
+        } catch (IOException e) {
+            LOGGER.fine(() -> "Khong dat duoc timeout: " + e.getMessage());
+        }
         try (socket;
              BufferedReader in = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
              OutputStream out = socket.getOutputStream()) {
 
-            String line = in.readLine();
-            String response = handle(line);
+            String line = readLineBounded(in, MAX_LINE_LENGTH);
+            String response;
+            if (tooLong) {
+                response = ProtocolParser.error(ErrorCode.E003);
+            } else if (line == null) {
+                return; // client dong ket noi ma khong gui gi
+            } else {
+                response = handle(line);
+            }
             out.write((response + "\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
+            if (tooLong) {
+                drainQuietly(in);
+            }
 
+        } catch (SocketTimeoutException e) {
+            LOGGER.fine(() -> "Dong ket noi im lang qua " + IDLE_TIMEOUT_MS + "ms");
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Loi xu ly ket noi client: " + e.getMessage(), e);
         }
+    }
+
+    private boolean tooLong;
+
+    /**
+     * Doc bo phan con lai cua dong qua dai (toi da ~1MB / 500ms) truoc khi dong socket: dong khi con
+     * du lieu chua doc se gui RST, client (nhat la tren Windows) co the mat luon dong ERROR vua gui.
+     */
+    private void drainQuietly(BufferedReader in) {
+        try {
+            socket.setSoTimeout(500);
+            char[] buf = new char[8192];
+            int total = 0;
+            int n;
+            while (total < 1_000_000 && (n = in.read(buf)) != -1) {
+                total += n;
+            }
+        } catch (IOException ignored) {
+            // het thoi gian hoac client da dong - khong sao
+        }
+    }
+
+    /**
+     * Doc 1 dong nhung khong qua maxChars ky tu: BufferedReader.readLine() doc vo han, client gui
+     * 1 dong rat dai khong co '\n' se lam server het bo nho. Tra null neu EOF truoc khi co du lieu
+     * hoac dong qua dai (khi do tooLong = true).
+     */
+    private String readLineBounded(BufferedReader in, int maxChars) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        int c;
+        while ((c = in.read()) != -1) {
+            if (c == '\n') {
+                return sb.toString();
+            }
+            if (sb.length() >= maxChars) {
+                tooLong = true;
+                return null;
+            }
+            sb.append((char) c);
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     /** Tach rieng de unit test khong can mo socket that. */
