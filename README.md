@@ -54,6 +54,36 @@ DELETE|username
 - Bản sao nhận TTL mặc định tính từ lúc nhận (message đồng bộ không mang TTL).
 - Server chỉ bật replication khi cluster có từ 2 server trở lên.
 
+## Module 4 — Monitoring / Registry + Health Check (Nguyễn Trần Tuấn Anh)
+
+- `RegistryServer`: Tiến trình Registry độc lập lắng nghe trên port cố định `6000`, sử dụng `ConcurrentHashMap` lưu trữ thông tin và trạng thái (`UP`/`DOWN`) của các Cache Server trong cluster.
+- `Health Check Thread`: Kiểm tra định kỳ (mỗi 1 giây), phát hiện và đánh dấu `DOWN` khi server không gửi heartbeat quá **9 giây** (3 chu kỳ), đồng thời ghi log cảnh báo phát hiện server chết.
+- Phục vụ truy vấn:
+  - `HEARTBEAT|<serverIndex>|<host>|<port>` -> phản hồi `ACK` (hỗ trợ cả thống kê mở rộng).
+  - `STATUS|<serverIndex>` -> phản hồi `UP` hoặc `DOWN`.
+  - `STATS` -> phản hồi danh sách trạng thái dạng `STATS|<index>:<status>:<keyCount>:<requestCount>;...` phục vụ cho GUI Dashboard (Module 5).
+- `RegistryClient` & `HeartbeatSender`: Client tiện ích cho Client/GUI truy vấn trạng thái và CacheServer gửi heartbeat định kỳ mỗi 3 giây.
+- `FailureDetectionDemo`: Kịch bản mô phỏng kiểm thử tự động, phát hiện server ngắt kết nối và ghi lại log minh chứng tại `docs/log_minh_chung_server_chet.txt`.
+
+### Chạy RegistryServer & Test
+
+```bash
+# Chạy RegistryServer độc lập (port mặc định: 6000)
+java -cp target/classes com.nhom05.cache.registry.RegistryServer 6000
+
+# Chạy Demo kịch bản phát hiện server chết & xuất file log minh chứng
+java -cp target/classes com.nhom05.cache.registry.FailureDetectionDemo
+```
+
+### Test nhanh Registry qua telnet
+
+```bash
+telnet 127.0.0.1 6000
+HEARTBEAT|0|127.0.0.1|5001
+STATUS|0
+STATS
+```
+
 ## Yêu cầu
 
 - Java 17+
