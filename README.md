@@ -31,12 +31,12 @@ Mỗi thành viên chỉ code trong package của module mình. Thay đổi tron
 ### Build & chạy
 
 ```bash
-mvn test              # chạy 18 unit test (KeyValueStore + ClientHandler)
+mvn test              # chạy toàn bộ test JUnit (56 test)
 mvn package            # build target/keynet.jar
-java -jar target/keynet.jar config/config.properties
+java -jar target/keynet.jar config/config.properties 0   # tham số 2 = serverIndex
 ```
 
-Mặc định đọc `config/config.properties` nếu không truyền đường dẫn. Sửa `cache.serverIndex` trong file config để chạy nhiều instance trên cùng máy (mỗi instance port khác nhau theo `server.<index>.port`).
+Mặc định đọc `config/config.properties` nếu không truyền đường dẫn. Tham số thứ 2 (serverIndex) ghi đè `cache.serverIndex` trong file, nên chạy nhiều instance trên cùng máy chỉ cần 1 file config (mỗi instance port khác nhau theo `server.<index>.port`).
 
 ### Test nhanh bằng telnet
 
@@ -83,6 +83,23 @@ HEARTBEAT|0|127.0.0.1|5001
 STATUS|0
 STATS
 ```
+
+## Chạy cả cụm (Registry + 3 Cache Server) — dùng cho Module 5 (GUI)
+
+```bash
+mvn package -DskipTests
+java -cp target/keynet.jar com.nhom05.cache.registry.RegistryServer 6000   # terminal 1
+java -jar target/keynet.jar config/config.properties 0                    # terminal 2
+java -jar target/keynet.jar config/config.properties 1                    # terminal 3
+java -jar target/keynet.jar config/config.properties 2                    # terminal 4
+```
+
+- Mỗi Cache Server tự gửi `HEARTBEAT|index|host|port|<số key>|<số request>` tới Registry (`registry.host`/`registry.port` trong config) mỗi 3 giây.
+- GUI lấy dữ liệu qua các class có sẵn:
+  - `CacheClient.loadFromConfig("config/config.properties")` → `put/get/delete` (tự failover sang server dự phòng).
+  - `client.getRouter().getPrimaryServerIndex(key)` / `getReplicaServerIndex(i)` → server được chọn theo hash.
+  - `new RegistryClient().getParsedStats()` → danh sách `(serverIndex, UP/DOWN, số key, số request)` cho dashboard; `checkStatus(i)` → `UP`/`DOWN`.
+- Port đang dùng: client 5001–5003, replication 6001–6003, Registry 6000.
 
 ## Yêu cầu
 
