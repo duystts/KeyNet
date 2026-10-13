@@ -1,0 +1,25 @@
+# Maven / Java
+target/
+*.class
+*.jar
+*.war
+*.zip
+*.log
+logs/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+nbproject/private/
+nbactions.xml
+
+# He dieu hanh
+.DS_Store
+Thumbs.db
+
+# File khoa cua Word khi dang mo
+~$*
