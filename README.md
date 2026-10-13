@@ -36,10 +36,10 @@ Cấu hình cluster: [`config/config.properties`](./config/config.properties).
 ## Quy trình làm việc
 
 1. Mỗi việc là một **Issue** (gán đúng 1 người, có label và milestone).
-2. Tạo nhánh từ `master`: `feature/<MSSV>-issue-<số>-<tên-ngắn>`.
+2. Tạo nhánh từ `main`: `feature/<MSSV>-issue-<số>-<tên-ngắn>`.
 3. Commit theo Conventional Commits: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`.
 4. Mở Pull Request (ghi `Closes #<số>`, mô tả đã làm gì, ảnh hưởng module nào, kèm ảnh chụp chạy thành công).
-5. Ít nhất **1 thành viên khác** review và Approve rồi mới merge. Nhánh `master` được khóa, không push trực tiếp.
+5. Ít nhất **1 thành viên khác** review và Approve rồi mới merge. Nhánh `main` được khóa, không push trực tiếp.
 
 ## Bảng đóng góp
 
