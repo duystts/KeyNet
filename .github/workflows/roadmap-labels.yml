@@ -1,0 +1,26 @@
+name: Cap nhat label theo Lo trinh
+
+on:
+  issues:
+    types: [closed, reopened]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: roadmap-labels
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        env:
+          ROADMAP_ISSUE: '27'
+        with:
+          script: |
+            const run = require('./.github/scripts/roadmap-labels.js');
+            await run({ github, context, core });
