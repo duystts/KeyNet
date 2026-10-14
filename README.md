@@ -33,6 +33,24 @@ mvn package    # build target/keynet.jar
 
 Cấu hình cluster: [`config/config.properties`](./config/config.properties).
 
+### Chạy Cache Server
+
+```bash
+java -jar target/keynet.jar config/config.properties 0   # server #0, port 5001
+java -jar target/keynet.jar config/config.properties 1   # server #1, port 5002
+java -jar target/keynet.jar config/config.properties 2   # server #2, port 5003
+```
+
+Tham số thứ 2 (serverIndex) ghi đè `cache.serverIndex` trong file, nên 3 server dùng chung 1 file cấu hình.
+
+Thử nhanh bằng telnet (`telnet 127.0.0.1 5001`) hoặc netcat:
+
+```bash
+printf 'PUT|username|Duy\n' | nc 127.0.0.1 5001   # OK
+printf 'GET|username\n' | nc 127.0.0.1 5001        # VALUE|Duy
+printf 'DELETE|username\n' | nc 127.0.0.1 5001     # OK
+```
+
 ## Quy trình làm việc
 
 1. Mỗi việc là một **Issue** (gán đúng 1 người, có label và milestone).
