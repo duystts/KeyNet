@@ -95,13 +95,13 @@ public final class CacheServer {
         }
     }
 
-    /** Doi toi khi server da mo port (dung trong test). */
-    boolean awaitListening(long timeoutMs) throws InterruptedException {
+    /** Doi toi khi server da mo port. Test cua cac module khac dung de bat server that. */
+    public boolean awaitListening(long timeoutMs) throws InterruptedException {
         return listening.await(timeoutMs, TimeUnit.MILLISECONDS);
     }
 
     /** Port thuc te dang lang nghe (khi tao voi port 0 thi he dieu hanh tu chon). */
-    int localPort() {
+    public int localPort() {
         ServerSocket ss = serverSocket;
         return ss == null ? -1 : ss.getLocalPort();
     }
