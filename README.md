@@ -60,6 +60,8 @@ printf 'DELETE|username\n' | nc 127.0.0.1 5001     # OK
 4. Mở Pull Request (ghi `Closes #<số>`, mô tả đã làm gì, ảnh hưởng module nào, kèm ảnh chụp chạy thành công).
 5. Ít nhất **1 thành viên khác** review và Approve rồi mới merge. Nhánh `main` được khóa, không push trực tiếp.
 
+Thứ tự làm các Issue: xem Issue **📌 Lộ trình** (#27). Label `sẵn sàng` / `chờ issue khác` được GitHub Actions tự cập nhật mỗi khi có Issue đóng (`.github/workflows/roadmap-labels.yml`, test: `node --test ".github/scripts/*.test.js"`).
+
 ## Bảng đóng góp
 
 | MSSV | Họ và tên | Công việc đã thực hiện | Pull Requests |
