@@ -1,4 +1,4 @@
-// Chay: node --test .github/scripts/
+// Chay: node --test ".github/scripts/*.test.js"
 const test = require('node:test');
 const assert = require('node:assert');
 const run = require('./roadmap-labels.js');
