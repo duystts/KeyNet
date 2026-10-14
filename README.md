@@ -10,6 +10,7 @@ Nhiều Cache Server nhân bản hoạt động như Key-Value Store; Client dù
 
 - [Đặc tả giao thức](./docs/Dac-ta-giao-thuc-Nhom05.docx) — format message, mã lỗi, công thức hashing, giao thức replication/heartbeat, cấu trúc package. **Đọc trước khi code.**
 - [Phân công công việc](./docs/Phan-cong-cong-viec-Nhom05.docx) — 5 module, deliverable, mốc thời gian.
+- [Đặc tả triển khai](./docs/DAC_TA_TRIEN_KHAI.md) — tên lớp, hàm public, cổng mạng, định dạng lệnh cho từng Issue. **Đọc phần của mình trước khi làm Issue.**
 
 ## Cấu trúc package
 
