@@ -2,6 +2,7 @@ package com.nhom05.cache.server;
 
 import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
+import com.nhom05.cache.common.ServerConfig;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -135,6 +136,42 @@ public final class CacheServer {
         OutputStream out = socket.getOutputStream();
         out.write((response + "\n").getBytes(StandardCharsets.UTF_8));
         out.flush();
+    }
+
+    /**
+     * Chay: java -jar target/keynet.jar [file-config] [serverIndex]
+     * Mac dinh config/config.properties; serverIndex ghi de cache.serverIndex trong file,
+     * de chay 3 server tu cung 1 file config.
+     */
+    public static void main(String[] args) {
+        String configPath = args.length > 0 ? args[0] : "config/config.properties";
+        ServerConfig config;
+        try {
+            config = ServerConfig.load(configPath);
+            if (args.length > 1) {
+                config = config.withServerIndex(Integer.parseInt(args[1]));
+            }
+        } catch (IOException e) {
+            LOGGER.severe("Khong doc duoc file cau hinh " + configPath + ": " + e.getMessage());
+            System.exit(1);
+            return;
+        } catch (IllegalArgumentException e) {
+            LOGGER.severe("Cau hinh khong hop le: " + e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+        ServerConfig.ServerAddress self = config.self();
+        CacheServer server = new CacheServer(self.port(), config.ttlSeconds(), config.maxEntries());
+        Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown, "cache-shutdown"));
+        LOGGER.info("KeyNet CacheServer #" + config.serverIndex() + " - port " + self.port()
+                + ", ttl=" + config.ttlSeconds() + "s, maxEntries=" + config.maxEntries());
+        try {
+            server.start();
+        } catch (IOException e) {
+            LOGGER.severe("Khong mo duoc port " + self.port() + " (dang bi chiem?): " + e.getMessage());
+            System.exit(1);
+        }
     }
 
     /** Dung server: dong ServerSocket (nha port ngay), dung thread pool va kho. */
