@@ -157,13 +157,15 @@ public class CacheClient {
                 // Server dong ket noi ma khong tra gi
                 LOGGER.warning("Server " + addr.host() + ":" + addr.port()
                         + " dong ket noi ma khong tra response");
-                return ProtocolParser.error(ErrorCode.E004);
+                return ProtocolParser.error(ErrorCode.E004,
+                        "Khong ket noi duoc server " + addr.host() + ":" + addr.port());
             }
             return response;
         } catch (IOException e) {
             LOGGER.warning("Loi ket noi toi " + addr.host() + ":" + addr.port()
                     + ": " + e.getMessage());
-            return ProtocolParser.error(ErrorCode.E004);
+            return ProtocolParser.error(ErrorCode.E004,
+                    "Khong ket noi duoc server " + addr.host() + ":" + addr.port());
         }
     }
 }

@@ -194,4 +194,107 @@ class CacheClientTest {
         client.delete("b");
         assertEquals("NOTFOUND", client.get("b"));
     }
+    // ------------------------------------------------------------------ Cluster nhieu server
+
+    @Test
+    void cluster3Servers_keyGoesToCorrectPrimary() throws InterruptedException {
+        // Bat 3 server that, moi server dung port 0 rieng
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+        CacheServer s2 = startServer();
+        try {
+            List<ServerAddress> addrs = List.of(
+                    new ServerAddress("127.0.0.1", s0.localPort()),
+                    new ServerAddress("127.0.0.1", s1.localPort()),
+                    new ServerAddress("127.0.0.1", s2.localPort())
+            );
+            CacheClient c = new CacheClient(addrs);
+
+            // Voi moi key, tinh thu cong primaryIndex roi kiem tra PUT/GET cung tra dung
+            String[] keys = {"alpha", "beta", "gamma", "delta", "epsilon"};
+            for (String key : keys) {
+                assertEquals("OK", c.put(key, "val-" + key),
+                        "PUT that bai voi key: " + key);
+                assertEquals("VALUE|val-" + key, c.get(key),
+                        "GET sai voi key: " + key);
+            }
+        } finally {
+            s0.shutdown();
+            s1.shutdown();
+            s2.shutdown();
+        }
+    }
+
+    @Test
+    void cluster2Servers_servedByMatchesPrimaryIndex() throws InterruptedException {
+        // Kiem tra servedBy trong Response dung voi chi so server chinh
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+        try {
+            List<ServerAddress> addrs = List.of(
+                    new ServerAddress("127.0.0.1", s0.localPort()),
+                    new ServerAddress("127.0.0.1", s1.localPort())
+            );
+            CacheClient c = new CacheClient(addrs);
+            HashRouter router = c.router();
+
+            String[] keys = {"x", "y", "z", "session", "token"};
+            for (String key : keys) {
+                CacheClient.Response resp = c.send(key, "GET|" + key);
+                int expected = router.primaryIndex(key);
+                assertEquals(expected, resp.servedBy(),
+                        "servedBy sai voi key '" + key + "': expected=" + expected);
+                assertFalse(resp.failedOver());
+            }
+        } finally {
+            s0.shutdown();
+            s1.shutdown();
+        }
+    }
+
+    // ------------------------------------------------------------------ Server tat
+
+    @Test
+    void serverDown_returnsE004() {
+        // Tro client vao port khong co server -> phai tra ERROR|E004
+        CacheClient deadClient = new CacheClient(
+                List.of(new ServerAddress("127.0.0.1", 1)), // port 1 luon bi tu choi
+                200 // timeout ngan de test nhanh
+        );
+        String response = deadClient.get("anykey");
+        assertTrue(response.startsWith("ERROR|E004"),
+                "Server tat phai tra E004, nhan: " + response);
+    }
+
+    @Test
+    void serverShutdownAfterStart_returnsE004() throws InterruptedException {
+        // Bat server, ghi 1 key thanh cong, roi tat server, kiem tra loi
+        CacheServer s = startServer();
+        CacheClient c = new CacheClient(
+                List.of(new ServerAddress("127.0.0.1", s.localPort())),
+                500
+        );
+        assertEquals("OK", c.put("k", "v"), "PUT truoc khi tat server phai OK");
+        s.shutdown();
+        String response = c.get("k");
+        assertTrue(response.startsWith("ERROR|E004"),
+                "Server tat phai tra E004, nhan: " + response);
+    }
+
+    // ------------------------------------------------------------------ helper
+
+    /** Bat 1 CacheServer that voi port 0, doi den khi san sang. */
+    private CacheServer startServer() throws InterruptedException {
+        CacheServer s = new CacheServer(0, 60, 1000);
+        Thread t = new Thread(() -> {
+            try {
+                s.start();
+            } catch (IOException ignored) {
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+        assertTrue(s.awaitListening(3000), "Server khong khoi dong duoc");
+        return s;
+    }
 }
