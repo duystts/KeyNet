@@ -78,7 +78,9 @@ public class CacheClient {
 
     /**
      * Gui 1 dong request toi server chinh cua key, tra ve Response.
-     * Issue #6: chi gưi server chinh (failover bo sung o #7).
+     * Issue #7: neu server chinh loi co the failover (E004/E006, IOException, null response),
+     * thi thu server du phong 1 lan. Ca 2 deu loi -> tra ERROR|E004.
+     * Loi du lieu (E001, E002, E003, E005) tra luon, khong failover.
      *
      * @param key         key de chon server chinh (khong kiem tra do dai o day)
      * @param requestLine dong request da duoc build san (dung ProtocolParser.put/get/delete)
@@ -86,9 +88,36 @@ public class CacheClient {
      */
     public Response send(String key, String requestLine) {
         int primary = router.primaryIndex(key);
-        ServerAddress addr = router.server(primary);
-        String response = sendTo(addr, requestLine);
-        return new Response(response, primary, false);
+        ServerAddress primaryAddr = router.server(primary);
+        String response = sendTo(primaryAddr, requestLine);
+
+        // Kiem tra co nen failover khong
+        ErrorCode code = ProtocolParser.errorCodeOf(response);
+        boolean shouldFailover = (code != null && code.shouldFailover());
+
+        if (!shouldFailover) {
+            // Tra luon: OK, VALUE, NOTFOUND, hoac loi du lieu (E001/E002/E003/E005)
+            return new Response(response, primary, false);
+        }
+
+        // Failover: thu server du phong 1 lan duy nhat
+        int replica = router.replicaIndex(primary);
+        ServerAddress replicaAddr = router.server(replica);
+        LOGGER.warning("Failover: server chinh " + primaryAddr.host() + ":" + primaryAddr.port()
+                + " tra \"" + response + "\", thu server du phong "
+                + replicaAddr.host() + ":" + replicaAddr.port());
+
+        String replicaResponse = sendTo(replicaAddr, requestLine);
+        ErrorCode replicaCode = ProtocolParser.errorCodeOf(replicaResponse);
+
+        if (replicaCode != null && replicaCode.shouldFailover()) {
+            // Ca 2 server deu loi -> tra ERROR|E004
+            String finalError = ProtocolParser.error(ErrorCode.E004,
+                    "Ca server chinh va du phong deu khong kha dung");
+            return new Response(finalError, replica, true);
+        }
+
+        return new Response(replicaResponse, replica, true);
     }
 
     /**

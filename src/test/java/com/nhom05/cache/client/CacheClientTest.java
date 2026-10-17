@@ -281,6 +281,70 @@ class CacheClientTest {
                 "Server tat phai tra E004, nhan: " + response);
     }
 
+    // ------------------------------------------------------------------ Failover (#7)
+
+    @Test
+    void failover_primaryDown_requestSuccessViaReplica() throws InterruptedException {
+        // Bat 2 server that
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+        try {
+            List<ServerAddress> addrs = List.of(
+                    new ServerAddress("127.0.0.1", s0.localPort()),
+                    new ServerAddress("127.0.0.1", s1.localPort())
+            );
+            CacheClient c = new CacheClient(addrs, 500);
+
+            // Chon key co primaryIndex = 0
+            // Tim key nao co primary = 0
+            String key = "failover-key";
+            int primaryIdx = c.router().primaryIndex(key);
+            int replicaIdx = c.router().replicaIndex(primaryIdx);
+
+            // Ghi du lieu vao server du phong (gia lap replication)
+            CacheServer[] physServers = {s0, s1};
+            CacheClient onlyReplica = new CacheClient(
+                    List.of(addrs.get(replicaIdx)), 500);
+            assertEquals("OK", onlyReplica.put(key, "hello-failover"));
+
+            // Tat server chinh
+            physServers[primaryIdx].shutdown();
+            Thread.sleep(200);
+
+            // Request phai thanh cong qua server du phong
+            CacheClient.Response resp = c.send(key, "GET|" + key);
+            assertTrue(resp.failedOver(), "Phai failedOver() == true");
+            assertEquals("VALUE|hello-failover", resp.line(),
+                    "Phai lay duoc gia tri tu server du phong");
+        } finally {
+            s0.shutdown();
+            s1.shutdown();
+        }
+    }
+
+    @Test
+    void failover_bothServersDown_returnsE004() throws InterruptedException {
+        // Bat 2 server that roi tat ca 2
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+
+        List<ServerAddress> addrs = List.of(
+                new ServerAddress("127.0.0.1", s0.localPort()),
+                new ServerAddress("127.0.0.1", s1.localPort())
+        );
+        CacheClient c = new CacheClient(addrs, 500);
+
+        // Tat ca 2 server
+        s0.shutdown();
+        s1.shutdown();
+        Thread.sleep(200);
+
+        // Phai tra ERROR|E004
+        String response = c.get("any-key");
+        assertTrue(response.startsWith("ERROR|E004"),
+                "Ca 2 server tat phai tra ERROR|E004, nhan: " + response);
+    }
+
     // ------------------------------------------------------------------ helper
 
     /** Bat 1 CacheServer that voi port 0, doi den khi san sang. */
