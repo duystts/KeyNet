@@ -20,6 +20,9 @@ import java.util.Properties;
  */
 public final class ServerConfig {
 
+    /** Port replication = port client + 1000 (muc 5 dac ta). */
+    public static final int REPLICATION_PORT_OFFSET = 1000;
+
     public record ServerAddress(String host, int port) {
     }
 
@@ -109,6 +112,16 @@ public final class ServerConfig {
     /** Dia chi cua server dang chay (servers[serverIndex]). */
     public ServerAddress self() {
         return servers.get(serverIndex);
+    }
+
+    /** Port kenh replication cua server thu index (muc 5 dac ta): port client + 1000. */
+    public int replicationPort(int index) {
+        return servers.get(index).port() + REPLICATION_PORT_OFFSET;
+    }
+
+    /** Server du phong cua server dang chay: (serverIndex + 1) mod N. */
+    public int backupIndex() {
+        return (serverIndex + 1) % servers.size();
     }
 
     public long ttlSeconds() {

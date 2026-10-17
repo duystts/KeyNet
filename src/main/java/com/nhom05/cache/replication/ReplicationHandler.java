@@ -1,5 +1,6 @@
 package com.nhom05.cache.replication;
 
+import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.server.KeyValueStore;
 
 import java.io.BufferedReader;
@@ -41,27 +42,25 @@ public final class ReplicationHandler implements AutoCloseable {
     private static final int CONNECT_TIMEOUT_MS = 1000;
     private static final int READ_TIMEOUT_MS = 2000;
 
+    /** Dia chi kenh replication cua server du phong. */
+    private record Backup(String host, int port) {
+    }
+
     private final KeyValueStore store;
-    private final String peerHost;
-    private final int peerPort;
+    /** null = chua co server du phong (cum 1 server) -> khong gui di dau. */
+    private volatile Backup backup;
 
     private final ExecutorService senderPool;
     private final ExecutorService listenerPool;
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
 
-    /**
-     * @param store    kho du lieu cua server nay (dung khi nhan replication)
-     * @param peerHost host cua server doi tac; null neu khong gui di dau
-     * @param peerPort cong replication cua doi tac; &lt;= 0 neu khong gui di dau
-     */
-    public ReplicationHandler(KeyValueStore store, String peerHost, int peerPort) {
+    /** @param store kho du lieu cua server nay (dung khi nhan replication) */
+    public ReplicationHandler(KeyValueStore store) {
         if (store == null) {
             throw new IllegalArgumentException("store khong duoc null");
         }
         this.store = store;
-        this.peerHost = peerHost;
-        this.peerPort = peerPort;
         this.senderPool = Executors.newFixedThreadPool(2, daemonFactory("repl-sender"));
         this.listenerPool = Executors.newCachedThreadPool(daemonFactory("repl-listener"));
     }
@@ -79,32 +78,41 @@ public final class ReplicationHandler implements AutoCloseable {
     // Phia gui (bat dong bo)
     // ------------------------------------------------------------------
 
-    /** Gui REPLICATE|PUT|key|value|timestamp, tra ve ngay lap tuc. */
-    public void replicatePut(String key, String value) {
-        send("REPLICATE|PUT|" + key + "|" + value + "|" + System.currentTimeMillis());
+    /** Dat server du phong (host, port replication); host null hoac port <= 0 = khong gui. */
+    public void setBackup(String host, int replicationPort) {
+        backup = host == null || replicationPort <= 0 ? null : new Backup(host, replicationPort);
+    }
+
+    /**
+     * Gui REPLICATE|PUT|key|value|timestamp, tra ve ngay lap tuc.
+     * timestamp la thoi diem ghi tren server chinh (#9 dung de so sanh ban nao moi hon).
+     */
+    public void replicatePut(String key, String value, long timestamp) {
+        send(ProtocolParser.replicatePut(key, value, timestamp));
     }
 
     /** Gui REPLICATE|DELETE|key|timestamp, tra ve ngay lap tuc. */
-    public void replicateDelete(String key) {
-        send("REPLICATE|DELETE|" + key + "|" + System.currentTimeMillis());
+    public void replicateDelete(String key, long timestamp) {
+        send(ProtocolParser.replicateDelete(key, timestamp));
     }
 
     /** Dua viec gui vao thread pool rieng; moi loi deu duoc nuot lai. */
     private void send(String line) {
-        if (peerHost == null || peerPort <= 0) {
+        Backup target = backup;
+        if (target == null) {
             return; // khong co doi tac
         }
         try {
-            senderPool.execute(() -> sendBlocking(line));
+            senderPool.execute(() -> sendBlocking(target, line));
         } catch (RuntimeException e) { // pool da dong
             LOGGER.log(Level.WARNING, "Khong dua duoc replication vao hang doi: {0}", e.toString());
         }
     }
 
     /** Gui 1 lan duy nhat, doc phan hoi xong moi dong socket. Khong retry. */
-    private void sendBlocking(String line) {
+    private void sendBlocking(Backup target, String line) {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(peerHost, peerPort), CONNECT_TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(target.host(), target.port()), CONNECT_TIMEOUT_MS);
             socket.setSoTimeout(READ_TIMEOUT_MS);
             PrintWriter out = new PrintWriter(socket.getOutputStream(), false, StandardCharsets.UTF_8);
             BufferedReader in = new BufferedReader(
@@ -117,7 +125,7 @@ public final class ReplicationHandler implements AutoCloseable {
             }
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Replication toi {0}:{1} that bai: {2}",
-                    new Object[] { peerHost, peerPort, e.toString() });
+                    new Object[] { target.host(), target.port(), e.toString() });
         }
     }
 
@@ -127,11 +135,9 @@ public final class ReplicationHandler implements AutoCloseable {
 
     /**
      * Mo cong lang nghe replication. Truyen 0 de he dieu hanh chon cong trong (dung
-     * cho test).
-     * 
-     * @return cong thuc te dang lang nghe
+     * cho test), xem cong that bang listenerPort().
      */
-    public synchronized int startListener(int port) throws IOException {
+    public synchronized void startListener(int port) throws IOException {
         if (running) {
             throw new IllegalStateException("Listener da chay");
         }
@@ -142,11 +148,10 @@ public final class ReplicationHandler implements AutoCloseable {
         acceptor.setDaemon(true);
         acceptor.start();
         LOGGER.log(Level.INFO, "Replication listener lang nghe cong {0}", ss.getLocalPort());
-        return ss.getLocalPort();
     }
 
     /** Cong dang lang nghe, -1 neu chua mo. */
-    public int getListenPort() {
+    public int listenerPort() {
         ServerSocket ss = serverSocket;
         return ss == null ? -1 : ss.getLocalPort();
     }
@@ -184,52 +189,23 @@ public final class ReplicationHandler implements AutoCloseable {
 
     /**
      * Ap dung 1 lenh replication vao kho (ghi truc tiep qua KeyValueStore nen TTL
-     * va LRU
-     * van hoat dong nhu thuong). Tra ve "OK" hoac "ERROR|E001|...".
-     * Timestamp duoc kiem tra la so nhung TTL van tinh lai tu luc nhan.
+     * va LRU van hoat dong nhu thuong). Tra ve "OK" hoac "ERROR|E001|...".
+     * Timestamp moi duoc kiem tra la so; so sanh ban moi/cu lam o #9.
      */
-    public String apply(String line) {
-        if (line == null) {
-            return ERR_FORMAT + "ban tin rong";
+    String apply(String line) {
+        ProtocolParser.Replicate r = ProtocolParser.parseReplicate(line);
+        if (r == null) {
+            return ERR_FORMAT + "can REPLICATE|PUT|key|value|timestamp hoac REPLICATE|DELETE|key|timestamp";
         }
-        String msg = line.strip();
-        String[] head = msg.split("\\|", 3);
-        if (head.length < 3 || !"REPLICATE".equals(head[0])) {
-            return ERR_FORMAT + "sai dinh dang";
+        if (!ProtocolParser.isKeyValid(r.key()) || (r.isPut() && !ProtocolParser.isValueValid(r.value()))) {
+            return ERR_FORMAT + "key/value khong hop le";
         }
-        String rest = head[2];
-        switch (head[1]) {
-            case "PUT": {
-                // rest = key|value|timestamp ; value co the chua dau '|' nen cat theo '|' dau
-                // va cuoi
-                int first = rest.indexOf('|');
-                int last = rest.lastIndexOf('|');
-                if (first <= 0 || last <= first || !isNumber(rest.substring(last + 1))) {
-                    return ERR_FORMAT + "PUT can key|value|timestamp";
-                }
-                store.put(rest.substring(0, first), rest.substring(first + 1, last));
-                return OK;
-            }
-            case "DELETE": {
-                String[] p = rest.split("\\|", -1);
-                if (p.length != 2 || p[0].isEmpty() || !isNumber(p[1])) {
-                    return ERR_FORMAT + "DELETE can key|timestamp";
-                }
-                store.delete(p[0]);
-                return OK;
-            }
-            default:
-                return ERR_FORMAT + "lenh khong ho tro: " + head[1];
+        if (r.isPut()) {
+            store.put(r.key(), r.value());
+        } else {
+            store.delete(r.key());
         }
-    }
-
-    private static boolean isNumber(String s) {
-        try {
-            Long.parseLong(s);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
-        }
+        return OK;
     }
 
     /** Dong listener va cac thread pool. */
