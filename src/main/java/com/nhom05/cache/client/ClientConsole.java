@@ -1,19 +1,23 @@
 package com.nhom05.cache.client;
 
+import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
-import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.common.ServerConfig.ServerAddress;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * Demo console tuong tac cho CacheClient (Issue #7).
+ * Demo console tuong tac cho CacheClient (Issue #7). Closes #7
  *
- * Cach chay: java -cp ... com.nhom05.cache.client.ClientConsole [config.properties]
- * Mac dinh doc config/config.properties neu khong truyen tham so.
+ * Cach chay:
+ *   1. (Windows) chay "chcp 65001" truoc de console hieu UTF-8
+ *   2. java -cp ... com.nhom05.cache.client.ClientConsole [config.properties]
+ *      hoac: mvn exec:java -Dexec.mainClass=...ClientConsole -Dexec.args=config/config.properties
  *
  * Lenh ho tro:
  *   PUT <key> <value co dau cach>   hoac  PUT|key|value
@@ -23,19 +27,31 @@ import java.util.List;
  *   SERVERS         - liet ke tat ca server trong cluster
  *   HELP            - hien thi huong dan
  *   EXIT / QUIT     - thoat
+ *
+ * Moi response duoc in kem "(server #N[, failover])" de de quan sat failover.
  */
 public class ClientConsole {
 
     private static final String DEFAULT_CONFIG = "config/config.properties";
 
     private final CacheClient client;
+    /** Output stream UTF-8 (thay the System.out de tranh loi charset tren Windows). */
+    private final PrintStream out;
 
     public ClientConsole(CacheClient client) {
+        this(client, new PrintStream(System.out, true, StandardCharsets.UTF_8));
+    }
+
+    /** Constructor cho test: inject PrintStream tuy y. */
+    ClientConsole(CacheClient client, PrintStream out) {
         this.client = client;
+        this.out = out;
     }
 
     /** Khoi dong console voi tham so dong lenh. */
     public static void main(String[] args) throws IOException {
+        // Ghi chu: tren Windows nen chay "chcp 65001" truoc khi goi lenh nay
+        // de console hieu ky tu UTF-8 (tieng Viet, ky tu dac biet).
         String configPath = args.length > 0 ? args[0] : DEFAULT_CONFIG;
         CacheClient client = CacheClient.fromConfig(configPath);
         new ClientConsole(client).run();
@@ -44,20 +60,22 @@ public class ClientConsole {
     /** Vong lap chinh doc lenh tu stdin va xu ly. */
     public void run() throws IOException {
         printWelcome();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        // Dung UTF-8 cho stdin tranh loi "Ph?m" tren Windows (Java 17 khong mac dinh UTF-8)
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(System.in, StandardCharsets.UTF_8));
         String line;
-        System.out.print("> ");
+        out.print("> ");
         while ((line = reader.readLine()) != null) {
             line = line.strip();
             if (line.isEmpty()) {
-                System.out.print("> ");
+                out.print("> ");
                 continue;
             }
             boolean continueLoop = handleLine(line);
             if (!continueLoop) break;
-            System.out.print("> ");
+            out.print("> ");
         }
-        System.out.println("Tam biet!");
+        out.println("Tam biet!");
     }
 
     /**
@@ -66,9 +84,7 @@ public class ClientConsole {
      * @return false neu nguoi dung muon thoat, true neu tiep tuc
      */
     boolean handleLine(String line) {
-        // Ho tro ca cu phap raw: PUT|key|value
         String normalized = normalizeRaw(line);
-
         String upper = normalized.toUpperCase();
 
         if (upper.equals("EXIT") || upper.equals("QUIT")) {
@@ -83,75 +99,87 @@ public class ClientConsole {
             return true;
         }
 
-        // Phan tich lenh theo cu phap than thien: LENH key [value...]
         String[] parts = normalized.split("\\s+", 3);
         String cmd = parts[0].toUpperCase();
 
         switch (cmd) {
             case "PUT" -> {
                 if (parts.length < 3) {
-                    System.out.println("Cu phap: PUT <key> <value>");
+                    out.println("Cu phap: PUT <key> <value>");
                 } else {
                     String key = parts[1];
                     String value = parts[2];
-                    String result = client.put(key, value);
-                    System.out.println(result);
+                    if (!ProtocolParser.isKeyValid(key)) {
+                        out.println(ProtocolParser.error(ErrorCode.E002));
+                    } else if (!ProtocolParser.isValueValid(value)) {
+                        out.println(ProtocolParser.error(ErrorCode.E003));
+                    } else {
+                        CacheClient.Response resp = client.send(key, ProtocolParser.put(key, value));
+                        out.println(formatResponse(resp));
+                    }
                 }
             }
             case "GET" -> {
                 if (parts.length < 2) {
-                    System.out.println("Cu phap: GET <key>");
+                    out.println("Cu phap: GET <key>");
                 } else {
                     String key = parts[1];
-                    String result = client.get(key);
-                    System.out.println(result);
+                    if (!ProtocolParser.isKeyValid(key)) {
+                        out.println(ProtocolParser.error(ErrorCode.E002));
+                    } else {
+                        CacheClient.Response resp = client.send(key, ProtocolParser.get(key));
+                        out.println(formatResponse(resp));
+                    }
                 }
             }
             case "DELETE" -> {
                 if (parts.length < 2) {
-                    System.out.println("Cu phap: DELETE <key>");
+                    out.println("Cu phap: DELETE <key>");
                 } else {
                     String key = parts[1];
-                    String result = client.delete(key);
-                    System.out.println(result);
+                    if (!ProtocolParser.isKeyValid(key)) {
+                        out.println(ProtocolParser.error(ErrorCode.E002));
+                    } else {
+                        CacheClient.Response resp = client.send(key, ProtocolParser.delete(key));
+                        out.println(formatResponse(resp));
+                    }
                 }
             }
             case "INFO" -> {
                 if (parts.length < 2) {
-                    System.out.println("Cu phap: INFO <key>");
+                    out.println("Cu phap: INFO <key>");
                 } else {
-                    String key = parts[1];
-                    printInfo(key);
+                    printInfo(parts[1]);
                 }
             }
-            default -> System.out.println("Lenh khong ro: " + parts[0] + ". Go HELP de xem huong dan.");
+            default -> out.println("Lenh khong ro: " + parts[0] + ". Go HELP de xem huong dan.");
         }
         return true;
     }
 
     /**
-     * Neu dong co dang RAW (chua '|'), chuyen thanh cu phap co dau cach de xu ly thong nhat.
+     * Format response kem thong tin server phuc vu va trang thai failover.
+     * Vi du: "OK  (server #1, failover)"  hoac  "VALUE|hello  (server #0)"
+     */
+    private String formatResponse(CacheClient.Response resp) {
+        String suffix = resp.failedOver()
+                ? "  (server #" + resp.servedBy() + ", failover)"
+                : "  (server #" + resp.servedBy() + ")";
+        return resp.line() + suffix;
+    }
+
+    /**
+     * Neu dong co dang RAW (chua '|'), chuyen thanh cu phap co dau cach.
      * Vi du "PUT|k|hello world" -> "PUT k hello world"
-     * Chi chuyen neu khong co dau cach truoc dau '|' dau tien.
      */
     private String normalizeRaw(String line) {
-        // Neu khong chua '|' thi la cu phap binh thuong
         if (!line.contains("|")) return line;
-
-        // Phan tich theo '|' (giu toi da 3 phan: CMD, key, value)
         String[] rawParts = line.split("\\|", 3);
         String cmd = rawParts[0].strip();
-
         return switch (cmd.toUpperCase()) {
-            case "PUT" -> rawParts.length >= 3
-                    ? "PUT " + rawParts[1] + " " + rawParts[2]
-                    : line;
-            case "GET" -> rawParts.length >= 2
-                    ? "GET " + rawParts[1]
-                    : line;
-            case "DELETE" -> rawParts.length >= 2
-                    ? "DELETE " + rawParts[1]
-                    : line;
+            case "PUT"    -> rawParts.length >= 3 ? "PUT "    + rawParts[1] + " " + rawParts[2] : line;
+            case "GET"    -> rawParts.length >= 2 ? "GET "    + rawParts[1] : line;
+            case "DELETE" -> rawParts.length >= 2 ? "DELETE " + rawParts[1] : line;
             default -> line;
         };
     }
@@ -159,7 +187,7 @@ public class ClientConsole {
     /** Hien thi thong tin server chinh / du phong cua key. */
     private void printInfo(String key) {
         if (!ProtocolParser.isKeyValid(key)) {
-            System.out.println("Key khong hop le: " + key);
+            out.println("Key khong hop le: " + key);
             return;
         }
         List<ServerAddress> servers = client.router().servers();
@@ -167,29 +195,30 @@ public class ClientConsole {
         int replica = client.router().replicaIndex(primary);
         ServerAddress primaryAddr = servers.get(primary);
         ServerAddress replicaAddr = servers.get(replica);
-        System.out.printf("Key \"%s\":%n", key);
-        System.out.printf("  Server chinh  [%d]: %s:%d%n", primary, primaryAddr.host(), primaryAddr.port());
-        System.out.printf("  Server du phong [%d]: %s:%d%n", replica, replicaAddr.host(), replicaAddr.port());
+        out.printf("Key \"%s\":%n", key);
+        out.printf("  Server chinh    [%d]: %s:%d%n", primary, primaryAddr.host(), primaryAddr.port());
+        out.printf("  Server du phong [%d]: %s:%d%n", replica, replicaAddr.host(), replicaAddr.port());
     }
 
     /** Liet ke tat ca server trong cluster. */
     private void printServers() {
         List<ServerAddress> servers = client.router().servers();
-        System.out.println("Cluster co " + servers.size() + " server:");
+        out.println("Cluster co " + servers.size() + " server:");
         for (int i = 0; i < servers.size(); i++) {
             ServerAddress addr = servers.get(i);
-            System.out.printf("  [%d] %s:%d%n", i, addr.host(), addr.port());
+            out.printf("  [%d] %s:%d%n", i, addr.host(), addr.port());
         }
     }
 
     private void printWelcome() {
-        System.out.println("=== KeyNet Cache Console (Issue #7) ===");
-        System.out.println("Go HELP de xem lenh, EXIT de thoat.");
+        out.println("=== KeyNet Cache Console (Issue #7) ===");
+        out.println("Tip (Windows): chay 'chcp 65001' truoc de hien thi tieng Viet dung.");
+        out.println("Go HELP de xem lenh, EXIT de thoat.");
         printServers();
     }
 
     private void printHelp() {
-        System.out.println("""
+        out.println("""
                 Lenh ho tro:
                   PUT <key> <value>   - Ghi key-value (value co the chua dau cach)
                   GET <key>           - Doc gia tri
@@ -200,6 +229,7 @@ public class ClientConsole {
                   EXIT / QUIT         - Thoat
                 
                 Cung chap nhan cu phap raw: PUT|key|value  GET|key  DELETE|key
+                Moi ket qua in kem "(server #N[, failover])" de quan sat failover.
                 """);
     }
 }

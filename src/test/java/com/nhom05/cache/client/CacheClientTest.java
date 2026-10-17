@@ -323,6 +323,56 @@ class CacheClientTest {
     }
 
     @Test
+    void failover_e002_noFailover() throws InterruptedException {
+        // E002 la loi du lieu -> khong failover, tra luon
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+        try {
+            List<ServerAddress> addrs = List.of(
+                    new ServerAddress("127.0.0.1", s0.localPort()),
+                    new ServerAddress("127.0.0.1", s1.localPort())
+            );
+            CacheClient c = new CacheClient(addrs, 500);
+
+            // Key rong -> E002, khong failover (du ca 2 server dang chay)
+            CacheClient.Response resp = c.send("", "GET|");
+            assertTrue(resp.line().startsWith("ERROR|E002"),
+                    "E002 phai tra luon, nhan: " + resp.line());
+            assertFalse(resp.failedOver(), "E002 khong duoc failover");
+        } finally {
+            s0.shutdown();
+            s1.shutdown();
+        }
+    }
+
+    @Test
+    void failover_put_primaryDown_successViaReplica() throws InterruptedException {
+        // PUT cung failover khi server chinh tat
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+        try {
+            List<ServerAddress> addrs = List.of(
+                    new ServerAddress("127.0.0.1", s0.localPort()),
+                    new ServerAddress("127.0.0.1", s1.localPort())
+            );
+            CacheClient c = new CacheClient(addrs, 500);
+
+            String key = "put-failover-key";
+            int primaryIdx = c.router().primaryIndex(key);
+            CacheServer[] physServers = {s0, s1};
+            physServers[primaryIdx].shutdown();
+            Thread.sleep(200);
+
+            CacheClient.Response resp = c.send(key, "PUT|" + key + "|hello");
+            assertTrue(resp.failedOver(), "PUT phai failedOver() == true khi server chinh tat");
+            assertEquals("OK", resp.line(), "PUT qua server du phong phai tra OK");
+        } finally {
+            s0.shutdown();
+            s1.shutdown();
+        }
+    }
+
+    @Test
     void failover_bothServersDown_returnsE004() throws InterruptedException {
         // Bat 2 server that roi tat ca 2
         CacheServer s0 = startServer();
