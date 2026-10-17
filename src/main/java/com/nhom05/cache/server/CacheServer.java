@@ -3,6 +3,7 @@ package com.nhom05.cache.server;
 import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig;
+import com.nhom05.cache.registry.HeartbeatSender;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,6 +43,7 @@ public final class CacheServer {
     private final ClientHandler handler;
     private final ThreadPoolExecutor pool;
     private final CountDownLatch listening = new CountDownLatch(1);
+    private final AtomicLong requestCount = new AtomicLong();
     private volatile ServerSocket serverSocket;
     private volatile boolean running = true;
 
@@ -115,6 +118,7 @@ public final class CacheServer {
                 write(socket, ProtocolParser.error(ErrorCode.E003));
                 LineReader.drain(socket, in);
             } else if (line.text() != null) {
+                requestCount.incrementAndGet();
                 write(socket, handler.handle(line.text()));
             }
         } catch (SocketTimeoutException e) {
@@ -122,6 +126,16 @@ public final class CacheServer {
         } catch (IOException e) {
             LOGGER.log(Level.FINE, "Loi ket noi client: " + e.getMessage(), e);
         }
+    }
+
+    /** So yeu cau da xu ly tren server nay (dung cho Registry heartbeat va giam sat). */
+    public long requestCount() {
+        return requestCount.get();
+    }
+
+    /** So key hien co trong bo nho dem (dung cho Registry heartbeat va giam sat). */
+    public int keyCount() {
+        return store.size();
     }
 
     private static void reply(Socket socket, String response) {
@@ -163,7 +177,27 @@ public final class CacheServer {
 
         ServerConfig.ServerAddress self = config.self();
         CacheServer server = new CacheServer(self.port(), config.ttlSeconds(), config.maxEntries());
-        Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown, "cache-shutdown"));
+
+        HeartbeatSender heartbeatSender = null;
+        if (config.registry() != null) {
+            ServerConfig.ServerAddress reg = config.registry();
+            heartbeatSender = new HeartbeatSender(
+                    reg.host(), reg.port(),
+                    config.serverIndex(),
+                    self.host(), self.port(),
+                    server::keyCount,
+                    server::requestCount
+            );
+            heartbeatSender.start();
+        }
+        final HeartbeatSender finalHeartbeat = heartbeatSender;
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (finalHeartbeat != null) {
+                finalHeartbeat.close();
+            }
+            server.shutdown();
+        }, "cache-shutdown"));
+
         LOGGER.info("KeyNet CacheServer #" + config.serverIndex() + " - port " + self.port()
                 + ", ttl=" + config.ttlSeconds() + "s, maxEntries=" + config.maxEntries());
         try {

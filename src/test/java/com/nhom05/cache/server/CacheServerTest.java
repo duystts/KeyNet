@@ -150,4 +150,17 @@ class CacheServerTest {
         Thread.sleep(200);
         assertThrows(ConnectException.class, () -> send(port, "GET|k"));
     }
+
+    @Test
+    void testKeyAndRequestCount() throws Exception {
+        int port = startDefault();
+        assertEquals(0, server.keyCount());
+        assertEquals(0, server.requestCount());
+
+        send(port, "PUT|k1|v1");
+        send(port, "GET|k1");
+
+        assertEquals(1, server.keyCount());
+        assertEquals(2, server.requestCount());
+    }
 }
