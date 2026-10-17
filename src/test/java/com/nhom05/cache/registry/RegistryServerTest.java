@@ -122,4 +122,80 @@ class RegistryServerTest {
             assertEquals("STATS|0:UP:5:50", in.readLine());
         }
     }
+
+    @Test
+    void testOverloadedServerAnswersE004AndKeepsAccepting() throws Exception {
+        // 1 worker thread + 1 hang doi: ket noi thu 3 se bi tu choi bang ERROR|E004
+        server = new RegistryServer(0, 9000, 1, 1);
+        server.start();
+        int port = server.localPort();
+        assertTrue(port > 0);
+
+        try (Socket busy = new Socket("127.0.0.1", port)) {
+            Thread.sleep(100);
+            try (Socket queued = new Socket("127.0.0.1", port)) {
+                Thread.sleep(100);
+                try (Socket rejected = new Socket("127.0.0.1", port)) {
+                    rejected.setSoTimeout(3000);
+                    BufferedReader in = new BufferedReader(new InputStreamReader(rejected.getInputStream(), StandardCharsets.UTF_8));
+                    String line = in.readLine();
+                    assertEquals("ERROR|E004|Server overloaded", line);
+                }
+
+                // busy gui lenh roi dong ket noi, giai phong worker duy nhat cho ket noi trong hang doi
+                busy.getOutputStream().write("HEARTBEAT|0|127.0.0.1|5001\n".getBytes(StandardCharsets.UTF_8));
+                busy.getOutputStream().flush();
+                BufferedReader busyIn = new BufferedReader(new InputStreamReader(busy.getInputStream(), StandardCharsets.UTF_8));
+                assertEquals("ACK", busyIn.readLine());
+                busy.close();
+
+                queued.getOutputStream().write("STATUS|0\n".getBytes(StandardCharsets.UTF_8));
+                queued.getOutputStream().flush();
+                queued.setSoTimeout(3000);
+                BufferedReader queuedIn = new BufferedReader(new InputStreamReader(queued.getInputStream(), StandardCharsets.UTF_8));
+                assertEquals("UP", queuedIn.readLine());
+            }
+        }
+
+        // Sau khi tat ca cac ket noi tren dong, accept thread van song va nhan ket noi moi
+        try (Socket fresh = new Socket("127.0.0.1", port)) {
+            fresh.setSoTimeout(3000);
+            fresh.getOutputStream().write("STATUS|0\n".getBytes(StandardCharsets.UTF_8));
+            fresh.getOutputStream().flush();
+            BufferedReader freshIn = new BufferedReader(new InputStreamReader(fresh.getInputStream(), StandardCharsets.UTF_8));
+            assertEquals("UP", freshIn.readLine());
+        }
+    }
+
+    @Test
+    void test130ConnectionsDoNotKillAcceptThread() throws Exception {
+        server = new RegistryServer(0);
+        server.start();
+        int port = server.localPort();
+        assertTrue(port > 0);
+
+        java.util.List<Socket> sockets = new java.util.ArrayList<>();
+        try {
+            for (int i = 0; i < 130; i++) {
+                sockets.add(new Socket("127.0.0.1", port));
+            }
+            // Cho mot chut de cac ket noi duoc accept va rejected xu ly
+            Thread.sleep(200);
+        } finally {
+            for (Socket s : sockets) {
+                try {
+                    s.close();
+                } catch (IOException ignored) {}
+            }
+        }
+
+        // Sau khi dong het ket noi, Registry van tiep tuc accept binh thuong
+        try (Socket fresh = new Socket("127.0.0.1", port)) {
+            fresh.setSoTimeout(3000);
+            fresh.getOutputStream().write("HEARTBEAT|0|127.0.0.1|5001\n".getBytes(StandardCharsets.UTF_8));
+            fresh.getOutputStream().flush();
+            BufferedReader in = new BufferedReader(new InputStreamReader(fresh.getInputStream(), StandardCharsets.UTF_8));
+            assertEquals("ACK", in.readLine());
+        }
+    }
 }

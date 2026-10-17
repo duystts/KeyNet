@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -81,11 +82,15 @@ public final class RegistryServer {
     }
 
     public RegistryServer(int port, long timeoutMs) {
+        this(port, timeoutMs, THREAD_POOL_SIZE, QUEUE_CAPACITY);
+    }
+
+    RegistryServer(int port, long timeoutMs, int poolSize, int queueCapacity) {
         this.port = port;
         this.timeoutMs = timeoutMs;
         this.clientPool = new ThreadPoolExecutor(
-                THREAD_POOL_SIZE, THREAD_POOL_SIZE, 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(QUEUE_CAPACITY), r -> {
+                poolSize, poolSize, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity), r -> {
                     Thread t = new Thread(r, "registry-worker");
                     t.setDaemon(true);
                     return t;
@@ -156,12 +161,25 @@ public final class RegistryServer {
 
     private void runAcceptLoop() {
         while (running) {
+            Socket client;
             try {
-                Socket client = serverSocket.accept();
-                clientPool.execute(() -> serve(client));
+                client = serverSocket.accept();
             } catch (IOException e) {
                 if (running) {
                     LOGGER.log(Level.WARNING, "Loi accept tren RegistryServer: " + e.getMessage(), e);
+                }
+                continue;
+            }
+            try {
+                clientPool.execute(() -> serve(client));
+            } catch (RejectedExecutionException e) {
+                LOGGER.warning("RegistryServer qua tai, tu choi ket noi (E004)");
+                reply(client, ProtocolParser.error(ErrorCode.E004));
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Loi khong mong muon khi giao viec cho worker: " + e.getMessage(), e);
+                try {
+                    client.close();
+                } catch (IOException ignored) {
                 }
             }
         }
@@ -171,15 +189,13 @@ public final class RegistryServer {
         try (socket) {
             socket.setSoTimeout(IDLE_TIMEOUT_MS);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-            OutputStream out = socket.getOutputStream();
             String line;
             while (running && (line = in.readLine()) != null) {
                 if (line.isBlank()) {
                     continue;
                 }
                 String response = handleCommand(line);
-                out.write((response + "\n").getBytes(StandardCharsets.UTF_8));
-                out.flush();
+                write(socket, response);
             }
         } catch (SocketTimeoutException e) {
             LOGGER.fine(() -> "Dong ket noi im lang qua " + IDLE_TIMEOUT_MS + "ms");
@@ -190,6 +206,20 @@ public final class RegistryServer {
         }
     }
 
+    private static void reply(Socket socket, String response) {
+        try (socket) {
+            write(socket, response);
+        } catch (IOException e) {
+            LOGGER.fine(() -> "Khong gui duoc phan hoi: " + e.getMessage());
+        }
+    }
+
+    private static void write(Socket socket, String response) throws IOException {
+        OutputStream out = socket.getOutputStream();
+        out.write((response + "\n").getBytes(StandardCharsets.UTF_8));
+        out.flush();
+    }
+
     /**
      * Xu ly 1 dong lenh, tra ve 1 dong phan hoi (chua co '\n').
      * Package-private de phuc vu test khong can thiet lap socket.
@@ -198,15 +228,20 @@ public final class RegistryServer {
         if (line == null || line.isBlank()) {
             return ProtocolParser.error(ErrorCode.E001);
         }
-        String stripped = line.strip();
-        String[] parts = stripped.split(ProtocolParser.DELIMITER, -1);
-        String cmd = parts[0].toUpperCase();
-        return switch (cmd) {
-            case "HEARTBEAT" -> handleHeartbeat(parts);
-            case "STATUS" -> handleStatus(parts);
-            case "STATS" -> handleStats(parts);
-            default -> ProtocolParser.error(ErrorCode.E001);
-        };
+        try {
+            String stripped = line.strip();
+            String[] parts = stripped.split(ProtocolParser.DELIMITER, -1);
+            String cmd = parts[0].toUpperCase();
+            return switch (cmd) {
+                case "HEARTBEAT" -> handleHeartbeat(parts);
+                case "STATUS" -> handleStatus(parts);
+                case "STATS" -> handleStats(parts);
+                default -> ProtocolParser.error(ErrorCode.E001);
+            };
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.SEVERE, "Loi noi bo tren RegistryServer khi xu ly: " + line, e);
+            return ProtocolParser.error(ErrorCode.E005);
+        }
     }
 
     private String handleHeartbeat(String[] parts) {
@@ -302,13 +337,17 @@ public final class RegistryServer {
     }
 
     private void checkNodesHealth() {
-        long now = System.currentTimeMillis();
-        for (NodeInfo node : nodes.values()) {
-            if (node.up && (now - node.lastHeartbeat > timeoutMs)) {
-                node.up = false;
-                LOGGER.warning("[DEAD SERVER DETECTED] Server #" + node.index + " (" + node.host + ":" + node.port
-                        + ") khong gui heartbeat qua " + timeoutMs + "ms");
+        try {
+            long now = System.currentTimeMillis();
+            for (NodeInfo node : nodes.values()) {
+                if (node.up && (now - node.lastHeartbeat > timeoutMs)) {
+                    node.up = false;
+                    LOGGER.warning("[DEAD SERVER DETECTED] Server #" + node.index + " (" + node.host + ":" + node.port
+                            + ") khong gui heartbeat qua " + timeoutMs + "ms");
+                }
             }
+        } catch (Throwable t) {
+            LOGGER.log(Level.WARNING, "Loi trong health checker: " + t.getMessage(), t);
         }
     }
 
@@ -321,6 +360,11 @@ public final class RegistryServer {
         if (args.length > 0) {
             try {
                 port = Integer.parseInt(args[0]);
+                if (port <= 0 || port > 65535) {
+                    LOGGER.severe("Port khong hop le (phai tu 1 den 65535): " + args[0]);
+                    System.exit(1);
+                    return;
+                }
             } catch (NumberFormatException e) {
                 LOGGER.severe("Port khong hop le: " + args[0]);
                 System.exit(1);
@@ -331,7 +375,6 @@ public final class RegistryServer {
         Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown, "registry-shutdown"));
         try {
             server.start();
-            LOGGER.info("RegistryServer dang lang nghe tai port " + server.localPort());
             server.awaitShutdown();
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
