@@ -85,4 +85,25 @@ class ProtocolParserTest {
         assertTrue(ErrorCode.E004.shouldFailover());
         assertFalse(ErrorCode.E002.shouldFailover());
     }
+
+    @Test
+    void parsesReplicateLines() {
+        assertEquals(new ProtocolParser.Replicate(true, "k", "v", 123), ProtocolParser.parseReplicate("REPLICATE|PUT|k|v|123"));
+        assertEquals(new ProtocolParser.Replicate(true, "k", "", 5), ProtocolParser.parseReplicate("REPLICATE|PUT|k||5"));
+        assertEquals(new ProtocolParser.Replicate(false, "k", null, 124), ProtocolParser.parseReplicate("REPLICATE|DELETE|k|124"));
+        assertEquals("REPLICATE|PUT|k|v|123", ProtocolParser.replicatePut("k", "v", 123));
+        assertEquals("REPLICATE|DELETE|k|124", ProtocolParser.replicateDelete("k", 124));
+    }
+
+    @Test
+    void rejectsInvalidReplicateLines() {
+        assertNull(ProtocolParser.parseReplicate(null));
+        assertNull(ProtocolParser.parseReplicate("HELLO"));
+        assertNull(ProtocolParser.parseReplicate("PUT|k|v"));
+        assertNull(ProtocolParser.parseReplicate("REPLICATE|PUT|k|v"));
+        assertNull(ProtocolParser.parseReplicate("REPLICATE|PUT|k|v|abc"));
+        assertNull(ProtocolParser.parseReplicate("REPLICATE|PUT|k|a|b|1"));
+        assertNull(ProtocolParser.parseReplicate("REPLICATE|DELETE|k"));
+        assertNull(ProtocolParser.parseReplicate("REPLICATE|FOO|k|1"));
+    }
 }
