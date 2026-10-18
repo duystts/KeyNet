@@ -251,5 +251,57 @@ class ReplicationHandlerTest {
         assertEquals("OK", backup.apply("REPLICATE|DELETE|k|100"));
         assertEquals("current", backupStore.get("k"));
     }
+
+    @Test
+    void syncTraVeToanBoSnapshotVaEnd() throws Exception {
+        backupStore.put("k1", "v1");
+        backupStore.put("k2", "v2");
+        try (Socket s = new Socket("127.0.0.1", backup.listenerPort())) {
+            s.setSoTimeout(3000);
+            PrintWriter out = new PrintWriter(s.getOutputStream(), true, StandardCharsets.UTF_8);
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+            out.println("SYNC");
+            java.util.List<String> received = new java.util.ArrayList<>();
+            String line;
+            while ((line = in.readLine()) != null) {
+                if ("END".equals(line)) {
+                    break;
+                }
+                received.add(line);
+            }
+            assertEquals(2, received.size());
+            assertTrue(received.stream().anyMatch(l -> l.startsWith("REPLICATE|PUT|k1|v1|")));
+            assertTrue(received.stream().anyMatch(l -> l.startsWith("REPLICATE|PUT|k2|v2|")));
+        }
+    }
+
+    @Test
+    void syncFromLocPhanVungVaNapVaoStore() throws Exception {
+        backupStore.put("keep_me", "val1");
+        backupStore.put("drop_me", "val2");
+        KeyValueStore freshStore = new KeyValueStore(60, 100);
+        try (ReplicationHandler freshHandler = new ReplicationHandler(freshStore)) {
+            int loaded = freshHandler.syncFrom("127.0.0.1", backup.listenerPort(), k -> k.startsWith("keep_"));
+            assertEquals(1, loaded);
+            assertEquals("val1", freshStore.get("keep_me"));
+            assertNull(freshStore.get("drop_me"));
+        } finally {
+            freshStore.close();
+        }
+    }
+
+    @Test
+    void recoverAnToanKhiServerChuaBat() {
+        var servers = java.util.List.of(
+                new com.nhom05.cache.common.ServerConfig.ServerAddress("127.0.0.1", 20000),
+                new com.nhom05.cache.common.ServerConfig.ServerAddress("127.0.0.1", 20001),
+                new com.nhom05.cache.common.ServerConfig.ServerAddress("127.0.0.1", 20002)
+        );
+        com.nhom05.cache.common.ServerConfig config = com.nhom05.cache.common.ServerConfig.of(servers, 1);
+        int recovered = primary.recover(config);
+        assertEquals(0, recovered, "Khi cac peer chua bat, recover phai an toan tra ve 0");
+    }
 }
+
 

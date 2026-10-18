@@ -60,7 +60,7 @@ public final class ServerConfig {
         return fromProperties(props);
     }
 
-    static ServerConfig fromProperties(Properties props) {
+    public static ServerConfig fromProperties(Properties props) {
         List<ServerAddress> servers = new ArrayList<>();
         for (int i = 0; props.containsKey("server." + i + ".host"); i++) {
             String host = props.getProperty("server." + i + ".host").strip();
@@ -75,6 +75,15 @@ public final class ServerConfig {
                 intProp(props, "cache.ttlSeconds", "60"),
                 intProp(props, "cache.maxEntries", "1000"),
                 registry);
+    }
+
+    /** Tao ServerConfig truc tiep tu danh sach dia chi (dung cho test va lap trinh). */
+    public static ServerConfig of(List<ServerAddress> servers, int serverIndex) {
+        return new ServerConfig(servers, serverIndex, 60, 1000, new ServerAddress("127.0.0.1", 6000));
+    }
+
+    public static ServerConfig of(List<ServerAddress> servers, int serverIndex, long ttlSeconds, int maxEntries) {
+        return new ServerConfig(servers, serverIndex, ttlSeconds, maxEntries, new ServerAddress("127.0.0.1", 6000));
     }
 
     private static int intProp(Properties props, String name, String defaultValue) {
@@ -105,7 +114,17 @@ public final class ServerConfig {
         return servers.size();
     }
 
+    /** Tong so server trong cum (alias cua serverCount). */
+    public int size() {
+        return servers.size();
+    }
+
     public int serverIndex() {
+        return serverIndex;
+    }
+
+    /** Chi so cua chinh server nay trong cum (alias cua serverIndex). */
+    public int selfIndex() {
         return serverIndex;
     }
 

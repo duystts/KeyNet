@@ -23,6 +23,11 @@ public final class HashUtil {
         return Math.abs(key.hashCode() % n);
     }
 
+    /** Chon server chinh phu trach key (alias cua computeServerIndex). */
+    public static int selectServer(String key, int n) {
+        return computeServerIndex(key, n);
+    }
+
     /** Chi so server du phong cua serverIndex: server ke tiep, quay vong ve 0. */
     public static int replicaIndex(int serverIndex, int n) {
         requirePositive(n);
