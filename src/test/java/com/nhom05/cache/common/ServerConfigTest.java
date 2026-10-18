@@ -83,4 +83,13 @@ class ServerConfigTest {
         assertEquals(5001, c.servers().get(0).port());
         assertEquals(6000, c.registry().port());
     }
+
+    @Test
+    void replicationPortAndBackupIndex() {
+        ServerConfig c = ServerConfig.fromProperties(threeServers());
+        assertEquals(6001, c.replicationPort(0));
+        assertEquals(6003, c.replicationPort(2));
+        assertEquals(1, c.backupIndex());
+        assertEquals(0, c.withServerIndex(2).backupIndex());
+    }
 }

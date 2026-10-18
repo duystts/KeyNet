@@ -141,6 +141,8 @@ public int backupIndex()                   // = (serverIndex + 1) % serverCount(
 // ProtocolParser
 public record Replicate(boolean isPut, String key, String value, long timestamp) { }
 public static Replicate parseReplicate(String line)   // sai cú pháp / timestamp không phải số -> null
+public static String replicatePut(String key, String value, long timestamp)   // tạo dòng REPLICATE|PUT|...
+public static String replicateDelete(String key, long timestamp)              // tạo dòng REPLICATE|DELETE|...
 ```
 
 Định dạng (mục 5 đặc tả): `REPLICATE|PUT|key|value|timestamp` và `REPLICATE|DELETE|key|timestamp`, server dự phòng trả `OK` (hoặc `ERROR|E001|...` nếu sai).
@@ -148,12 +150,13 @@ public static Replicate parseReplicate(String line)   // sai cú pháp / timesta
 ```java
 public final class ReplicationHandler implements AutoCloseable {
     public ReplicationHandler(KeyValueStore store)
-    public void setBackup(String host, int replicationPort)
+    public void setBackup(String host, int replicationPort)          // host null / port <= 0 -> không gửi
     public void replicatePut(String key, String value, long timestamp)   // BẤT ĐỒNG BỘ
     public void replicateDelete(String key, long timestamp)              // BẤT ĐỒNG BỘ
     public void startListener(int replicationPort) throws IOException    // port 0 được, xem listenerPort()
     public int listenerPort()
     String apply(String line)        // package-private: áp 1 dòng REPLICATE vào store, trả OK / ERROR|E001
+                                     // (key/value sai luật ProtocolParser.isKeyValid/isValueValid cũng E001)
     public void close()
 }
 ```
@@ -161,6 +164,8 @@ public final class ReplicationHandler implements AutoCloseable {
 - Gửi bằng thread pool riêng (`ExecutorService`), **không** gửi trong thread đang trả lời client. Gửi lỗi (server dự phòng chết) → chỉ log WARNING, **không retry vô hạn**, không ném exception ra ngoài.
 - Bên gửi đọc dòng `OK` trả về rồi mới đóng socket.
 - Listener ghi vào kho **qua `KeyValueStore`** (hàm ở #9), không tự giữ map riêng — để TTL/LRU vẫn áp dụng cho bản sao.
+- `timestamp` do nơi gọi truyền vào (timestamp lần ghi trên server chính), **không** tự lấy giờ lúc gửi — #9 so sánh bằng giá trị này.
+- Trạng thái: đã merge qua PR #37 + #41. #8 hiện ghi bằng `store.put/delete` (bỏ qua timestamp); #9 đổi sang `putReplicated/deleteReplicated`.
 - Test: `apply(...)` với dòng đúng/sai; tích hợp 2 `ReplicationHandler` + 2 `KeyValueStore`: `replicatePut` bên A → đọc được bên B; B chưa chạy → A không lỗi.
 
 ### #9 Xung đột timestamp + tombstone
@@ -222,6 +227,8 @@ Lệnh (mục 6 đặc tả), mỗi dòng 1 lệnh, trả 1 dòng:
 | `STATUS\|index` | `UP` hoặc `DOWN` (server chưa từng heartbeat → `DOWN`) |
 | `STATS` | `STATS\|0:UP:12:340;1:DOWN:10:200` (sắp theo index); chưa có server → `STATS\|` |
 | sai cú pháp | `ERROR\|E001\|...` |
+| lỗi nội bộ khi xử lý lệnh | `ERROR\|E005\|...` |
+| quá tải (pool 20 luồng + hàng đợi 100 đều đầy) | `ERROR\|E004\|Server overloaded` rồi đóng kết nối, Registry vẫn nhận kết nối mới |
 
 ```java
 public final class RegistryServer {
@@ -229,6 +236,7 @@ public final class RegistryServer {
     public static final long TIMEOUT_MS = 9000;          // 3 chu kỳ heartbeat
     public RegistryServer(int port)
     public RegistryServer(int port, long timeoutMs)      // test dùng timeout ngắn
+    RegistryServer(int port, long timeoutMs, int poolSize, int queueCapacity)   // test giả lập quá tải
     public void start() throws IOException               // mở port rồi TRẢ VỀ NGAY (accept chạy thread nền)
     public int localPort()
     public void shutdown()
@@ -259,13 +267,18 @@ public final class HeartbeatSender {
     public HeartbeatSender(String registryHost, int registryPort, int serverIndex,
                            String selfHost, int selfPort, long intervalSeconds,
                            IntSupplier keyCount, LongSupplier requestCount)
+    public HeartbeatSender(String registryHost, int registryPort, int serverIndex,
+                           String selfHost, int selfPort,
+                           IntSupplier keyCount, LongSupplier requestCount)   // interval mặc định 3 giây
     public void start()        // thread nền (daemon), gửi ngay lần đầu rồi mỗi intervalSeconds (mặc định 3)
-    public void stop()
+    public void stop()         // = close() (implements AutoCloseable)
 }
 ```
 
+- Lỗi bất ngờ khi lấy số liệu / gửi (exception trong `keyCount`, `requestCount`) phải bắt lại, không làm dừng lịch gửi.
+
 - Registry tắt → chỉ log **1 lần** khi mất kết nối và 1 lần khi kết nối lại, không log mỗi 3 giây.
-- Nối `HeartbeatSender` vào `CacheServer` là việc của #13 (nhóm trưởng), #12 chỉ cần lớp chạy độc lập + test.
+- Trạng thái: #11 và #12 đã merge qua PR #35, gồm luôn phần nối `HeartbeatSender` vào `CacheServer.main` (`CacheServer.keyCount()` = `store.size()`, `requestCount()` = số dòng lệnh đã xử lý). #13 chỉ sắp lại thứ tự khởi động (xem mục 5).
 
 ### #18 Log minh chứng
 
@@ -318,5 +331,5 @@ Nút "Sập node" phải **tắt tiến trình server thật** — repo cũ ch�
 Để các bạn biết code của mình được dùng thế nào:
 
 - `CacheServer` gọi `replicatePut/replicateDelete` sau mỗi PUT/DELETE thành công (bằng timestamp `store.put(...)` trả về).
-- `CacheServer.main`: bật listener replication (cổng +1000) → `recover(config)` **trước** khi mở cổng client → mở cổng client → `recover` thêm 1 lần → bật `HeartbeatSender` (số key = `store.size()`, số request = bộ đếm của server).
+- `CacheServer.main`: bật listener replication (`config.replicationPort(i)`) + `setBackup(host của backupIndex(), replicationPort(backupIndex()))` → `recover(config)` **trước** khi mở cổng client → mở cổng client → `recover` thêm 1 lần → bật `HeartbeatSender`. Hiện `HeartbeatSender` (từ PR #35) đang bật **trước** khi mở cổng client — #13 chuyển xuống sau `recover` để Registry không báo UP lúc server còn đang lấy lại dữ liệu.
 - Nhận `SHUTDOWN` trên kênh replication (chỉ từ localhost) cho nút "Sập node" của GUI.

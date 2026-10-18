@@ -50,6 +50,36 @@ public final class ProtocolParser {
         };
     }
 
+    /** 1 dong REPLICATE (muc 5 dac ta). value = null voi DELETE. */
+    public record Replicate(boolean isPut, String key, String value, long timestamp) {
+    }
+
+    /**
+     * Parse REPLICATE|PUT|key|value|timestamp hoac REPLICATE|DELETE|key|timestamp.
+     * Sai cu phap / timestamp khong phai so -> null. Do dai key/value noi goi tu kiem tra.
+     */
+    public static Replicate parseReplicate(String line) {
+        if (line == null || line.isBlank()) {
+            return null;
+        }
+        String[] parts = line.strip().split(DELIMITER, -1);
+        if (parts.length < 4 || !"REPLICATE".equalsIgnoreCase(parts[0])) {
+            return null;
+        }
+        String op = parts[1].toUpperCase();
+        try {
+            if ("PUT".equals(op) && parts.length == 5) {
+                return new Replicate(true, parts[2], parts[3], Long.parseLong(parts[4]));
+            }
+            if ("DELETE".equals(op) && parts.length == 4) {
+                return new Replicate(false, parts[2], null, Long.parseLong(parts[3]));
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return null;
+    }
+
     /** Key hop le: khong rong, toi da 256 ky tu, khong chua | hoac xuong dong. */
     public static boolean isKeyValid(String key) {
         return key != null && !key.isEmpty() && key.length() <= MAX_KEY_LENGTH && hasNoSeparator(key);
@@ -76,6 +106,14 @@ public final class ProtocolParser {
 
     public static String delete(String key) {
         return "DELETE|" + key;
+    }
+
+    public static String replicatePut(String key, String value, long timestamp) {
+        return "REPLICATE|PUT|" + key + "|" + value + "|" + timestamp;
+    }
+
+    public static String replicateDelete(String key, long timestamp) {
+        return "REPLICATE|DELETE|" + key + "|" + timestamp;
     }
 
     // ------------------------------------------------------------------ build response (cho Server)
