@@ -47,7 +47,8 @@ class CacheServerTest {
     }
 
     private static String send(int port, byte[] data, boolean closeOutput) throws IOException {
-        try (Socket s = new Socket("127.0.0.1", port)) {
+        try (Socket s = new Socket("127.0.0.1", port);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8))) {
             s.setSoTimeout(3000);
             OutputStream out = s.getOutputStream();
             out.write(data);
@@ -55,7 +56,7 @@ class CacheServerTest {
             if (closeOutput) {
                 s.shutdownOutput();
             }
-            return new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8)).readLine();
+            return reader.readLine();
         }
     }
 
@@ -137,8 +138,10 @@ class CacheServerTest {
                 busy.getOutputStream().write("PUT|a|1\n".getBytes(StandardCharsets.UTF_8));
                 queued.getOutputStream().write("GET|a\n".getBytes(StandardCharsets.UTF_8));
                 queued.setSoTimeout(3000);
-                assertEquals("VALUE|1", new BufferedReader(new InputStreamReader(
-                        queued.getInputStream(), StandardCharsets.UTF_8)).readLine());
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        queued.getInputStream(), StandardCharsets.UTF_8))) {
+                    assertEquals("VALUE|1", reader.readLine());
+                }
             }
         }
     }

@@ -201,9 +201,9 @@ public final class ReplicationHandler implements AutoCloseable {
             return ERR_FORMAT + "key/value khong hop le";
         }
         if (r.isPut()) {
-            store.put(r.key(), r.value());
+            store.putReplicated(r.key(), r.value(), r.timestamp());
         } else {
-            store.delete(r.key());
+            store.deleteReplicated(r.key(), r.timestamp());
         }
         return OK;
     }

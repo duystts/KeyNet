@@ -80,8 +80,8 @@ class ReplicationHandlerTest {
 
     @Test
     void replicateDeleteXoaTrenBackup() throws Exception {
-        backupStore.put("k2", "v2");
-        primary.replicateDelete("k2", 1);
+        long ts = backupStore.put("k2", "v2");
+        primary.replicateDelete("k2", ts);
         assertTrue(waitFor(() -> backupStore.get("k2") == null));
     }
 
@@ -214,4 +214,42 @@ class ReplicationHandlerTest {
             assertEquals("3", small.get("c"));
         }
     }
+
+    @Test
+    void replicationPutCuDenSauPutMoiBiBoQua() {
+        // PUT moi timestamp 200 den truoc
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|new_val|200"));
+        assertEquals("new_val", backupStore.get("k"));
+
+        // PUT cu timestamp 100 den sau -> bi bo qua
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|old_val|100"));
+        assertEquals("new_val", backupStore.get("k"));
+    }
+
+    @Test
+    void replicationDeleteRoiPutCuDenTreBiChan() {
+        // PUT ban dau timestamp 100
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|v1|100"));
+        assertEquals("v1", backupStore.get("k"));
+
+        // DELETE tai timestamp 200 (tao tombstone)
+        assertEquals("OK", backup.apply("REPLICATE|DELETE|k|200"));
+        assertNull(backupStore.get("k"));
+
+        // PUT cu timestamp 150 den tre -> bi chan boi tombstone, key khong song lai
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|v_old|150"));
+        assertNull(backupStore.get("k"));
+    }
+
+    @Test
+    void replicationDeleteCuHonBanDangCoBiBoQua() {
+        // Ban ghi moi co timestamp 200
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|current|200"));
+        assertEquals("current", backupStore.get("k"));
+
+        // DELETE cu timestamp 100 den sau -> bi bo qua, key van con
+        assertEquals("OK", backup.apply("REPLICATE|DELETE|k|100"));
+        assertEquals("current", backupStore.get("k"));
+    }
 }
+
