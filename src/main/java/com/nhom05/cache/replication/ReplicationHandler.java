@@ -1,5 +1,7 @@
 package com.nhom05.cache.replication;
 
+import com.nhom05.cache.common.ErrorCode;
+import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.server.KeyValueStore;
 
 import java.io.BufferedReader;
@@ -37,18 +39,21 @@ public final class ReplicationHandler implements AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ReplicationHandler.class.getName());
 
     private static final String OK = "OK";
-    private static final String ERR_FORMAT = "ERROR|E001|";
     private static final int CONNECT_TIMEOUT_MS = 1000;
     private static final int READ_TIMEOUT_MS = 2000;
 
     private final KeyValueStore store;
-    private final String peerHost;
-    private final int peerPort;
+    private volatile String peerHost;
+    private volatile int peerPort;
 
     private final ExecutorService senderPool;
     private final ExecutorService listenerPool;
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
+
+    public ReplicationHandler(KeyValueStore store) {
+        this(store, null, 0);
+    }
 
     /**
      * @param store    kho du lieu cua server nay (dung khi nhan replication)
@@ -66,6 +71,12 @@ public final class ReplicationHandler implements AutoCloseable {
         this.listenerPool = Executors.newCachedThreadPool(daemonFactory("repl-listener"));
     }
 
+    /** Cap nhat dia chi server du phong de gui ban tin replication. */
+    public void setBackup(String host, int replicationPort) {
+        this.peerHost = host;
+        this.peerPort = replicationPort;
+    }
+
     private static java.util.concurrent.ThreadFactory daemonFactory(String prefix) {
         AtomicInteger n = new AtomicInteger();
         return r -> {
@@ -81,30 +92,46 @@ public final class ReplicationHandler implements AutoCloseable {
 
     /** Gui REPLICATE|PUT|key|value|timestamp, tra ve ngay lap tuc. */
     public void replicatePut(String key, String value) {
-        send("REPLICATE|PUT|" + key + "|" + value + "|" + System.currentTimeMillis());
+        replicatePut(key, value, System.currentTimeMillis());
+    }
+
+    public void replicatePut(String key, String value, long timestamp) {
+        if (!ProtocolParser.isKeyValid(key) || !ProtocolParser.isValueValid(value)) {
+            return;
+        }
+        send(ProtocolParser.replicatePut(key, value, timestamp));
     }
 
     /** Gui REPLICATE|DELETE|key|timestamp, tra ve ngay lap tuc. */
     public void replicateDelete(String key) {
-        send("REPLICATE|DELETE|" + key + "|" + System.currentTimeMillis());
+        replicateDelete(key, System.currentTimeMillis());
+    }
+
+    public void replicateDelete(String key, long timestamp) {
+        if (!ProtocolParser.isKeyValid(key)) {
+            return;
+        }
+        send(ProtocolParser.replicateDelete(key, timestamp));
     }
 
     /** Dua viec gui vao thread pool rieng; moi loi deu duoc nuot lai. */
     private void send(String line) {
-        if (peerHost == null || peerPort <= 0) {
+        String host = this.peerHost;
+        int port = this.peerPort;
+        if (host == null || port <= 0) {
             return; // khong co doi tac
         }
         try {
-            senderPool.execute(() -> sendBlocking(line));
+            senderPool.execute(() -> sendBlocking(line, host, port));
         } catch (RuntimeException e) { // pool da dong
             LOGGER.log(Level.WARNING, "Khong dua duoc replication vao hang doi: {0}", e.toString());
         }
     }
 
     /** Gui 1 lan duy nhat, doc phan hoi xong moi dong socket. Khong retry. */
-    private void sendBlocking(String line) {
+    private void sendBlocking(String line, String host, int port) {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(peerHost, peerPort), CONNECT_TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
             socket.setSoTimeout(READ_TIMEOUT_MS);
             PrintWriter out = new PrintWriter(socket.getOutputStream(), false, StandardCharsets.UTF_8);
             BufferedReader in = new BufferedReader(
@@ -117,7 +144,7 @@ public final class ReplicationHandler implements AutoCloseable {
             }
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Replication toi {0}:{1} that bai: {2}",
-                    new Object[] { peerHost, peerPort, e.toString() });
+                    new Object[] { host, port, e.toString() });
         }
     }
 
@@ -146,9 +173,13 @@ public final class ReplicationHandler implements AutoCloseable {
     }
 
     /** Cong dang lang nghe, -1 neu chua mo. */
-    public int getListenPort() {
+    public int listenerPort() {
         ServerSocket ss = serverSocket;
         return ss == null ? -1 : ss.getLocalPort();
+    }
+
+    public int getListenPort() {
+        return listenerPort();
     }
 
     private void acceptLoop(ServerSocket ss) {
@@ -183,53 +214,71 @@ public final class ReplicationHandler implements AutoCloseable {
     }
 
     /**
-     * Ap dung 1 lenh replication vao kho (ghi truc tiep qua KeyValueStore nen TTL
-     * va LRU
-     * van hoat dong nhu thuong). Tra ve "OK" hoac "ERROR|E001|...".
-     * Timestamp duoc kiem tra la so nhung TTL van tinh lai tu luc nhan.
+     * Ap dung 1 lenh replication vao kho (ghi qua putReplicated/deleteReplicated de
+     * ap dung LWW, tombstone, TTL va LRU). Tra ve "OK" hoac "ERROR|ma loi|...".
      */
-    public String apply(String line) {
-        if (line == null) {
-            return ERR_FORMAT + "ban tin rong";
+    String apply(String line) {
+        if (line == null || line.isBlank()) {
+            return ProtocolParser.error(ErrorCode.E001);
         }
-        String msg = line.strip();
-        String[] head = msg.split("\\|", 3);
-        if (head.length < 3 || !"REPLICATE".equals(head[0])) {
-            return ERR_FORMAT + "sai dinh dang";
+        String[] parts = line.strip().split(ProtocolParser.DELIMITER, -1);
+        if (parts.length < 4 || !"REPLICATE".equals(parts[0])) {
+            return ProtocolParser.error(ErrorCode.E001);
         }
-        String rest = head[2];
-        switch (head[1]) {
-            case "PUT": {
-                // rest = key|value|timestamp ; value co the chua dau '|' nen cat theo '|' dau
-                // va cuoi
-                int first = rest.indexOf('|');
-                int last = rest.lastIndexOf('|');
-                if (first <= 0 || last <= first || !isNumber(rest.substring(last + 1))) {
-                    return ERR_FORMAT + "PUT can key|value|timestamp";
-                }
-                store.put(rest.substring(0, first), rest.substring(first + 1, last));
-                return OK;
+        String subCmd = parts[1];
+        if ("PUT".equals(subCmd)) {
+            if (parts.length != 5) {
+                return ProtocolParser.error(ErrorCode.E001);
             }
-            case "DELETE": {
-                String[] p = rest.split("\\|", -1);
-                if (p.length != 2 || p[0].isEmpty() || !isNumber(p[1])) {
-                    return ERR_FORMAT + "DELETE can key|timestamp";
+            String key = parts[2];
+            String val = parts[3];
+            long ts;
+            try {
+                ts = Long.parseLong(parts[4]);
+                if (ts < 0) {
+                    return ProtocolParser.error(ErrorCode.E001);
                 }
-                store.delete(p[0]);
-                return OK;
+            } catch (NumberFormatException e) {
+                return ProtocolParser.error(ErrorCode.E001);
             }
-            default:
-                return ERR_FORMAT + "lenh khong ho tro: " + head[1];
+            if (key.length() > ProtocolParser.MAX_KEY_LENGTH) {
+                return ProtocolParser.error(ErrorCode.E002);
+            }
+            if (!ProtocolParser.isKeyValid(key)) {
+                return ProtocolParser.error(ErrorCode.E001);
+            }
+            if (val.length() > ProtocolParser.MAX_VALUE_LENGTH) {
+                return ProtocolParser.error(ErrorCode.E003);
+            }
+            if (!ProtocolParser.isValueValid(val)) {
+                return ProtocolParser.error(ErrorCode.E001);
+            }
+            store.putReplicated(key, val, ts);
+            return OK;
+        } else if ("DELETE".equals(subCmd)) {
+            if (parts.length != 4) {
+                return ProtocolParser.error(ErrorCode.E001);
+            }
+            String key = parts[2];
+            long ts;
+            try {
+                ts = Long.parseLong(parts[3]);
+                if (ts < 0) {
+                    return ProtocolParser.error(ErrorCode.E001);
+                }
+            } catch (NumberFormatException e) {
+                return ProtocolParser.error(ErrorCode.E001);
+            }
+            if (key.length() > ProtocolParser.MAX_KEY_LENGTH) {
+                return ProtocolParser.error(ErrorCode.E002);
+            }
+            if (!ProtocolParser.isKeyValid(key)) {
+                return ProtocolParser.error(ErrorCode.E001);
+            }
+            store.deleteReplicated(key, ts);
+            return OK;
         }
-    }
-
-    private static boolean isNumber(String s) {
-        try {
-            Long.parseLong(s);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
-        }
+        return ProtocolParser.error(ErrorCode.E001);
     }
 
     /** Dong listener va cac thread pool. */

@@ -118,4 +118,85 @@ public final class ProtocolParser {
             return null;
         }
     }
+
+    // ------------------------------------------------------------------ replication (Module 3)
+
+    public enum ReplicateType { PUT, DELETE }
+
+    public record Replicate(ReplicateType type, String key, String value, long timestamp) {
+        public Replicate(boolean isPut, String key, String value, long timestamp) {
+            this(isPut ? ReplicateType.PUT : ReplicateType.DELETE, key, value, timestamp);
+        }
+
+        public boolean isPut() {
+            return type == ReplicateType.PUT;
+        }
+
+        public boolean isDelete() {
+            return type == ReplicateType.DELETE;
+        }
+    }
+
+    public static String replicatePut(String key, String value, long timestamp) {
+        return "REPLICATE|PUT|" + key + "|" + value + "|" + timestamp;
+    }
+
+    public static String replicateDelete(String key, long timestamp) {
+        return "REPLICATE|DELETE|" + key + "|" + timestamp;
+    }
+
+    /**
+     * Parse 1 dong replication tu kenh dong bo (muc 5 dac ta).
+     * Dinh dang: REPLICATE|PUT|key|value|timestamp hoac REPLICATE|DELETE|key|timestamp.
+     * Sai cu phap, timestamp khong hop le hoac key/value khong hop le -> tra ve null.
+     */
+    public static Replicate parseReplicate(String line) {
+        if (line == null || line.isBlank()) {
+            return null;
+        }
+        String[] parts = line.strip().split(DELIMITER, -1);
+        if (parts.length < 4 || !"REPLICATE".equals(parts[0])) {
+            return null;
+        }
+        String subCmd = parts[1];
+        if ("PUT".equals(subCmd)) {
+            if (parts.length != 5) {
+                return null;
+            }
+            String key = parts[2];
+            String val = parts[3];
+            long ts;
+            try {
+                ts = Long.parseLong(parts[4]);
+                if (ts < 0) {
+                    return null;
+                }
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (!isKeyValid(key) || !isValueValid(val)) {
+                return null;
+            }
+            return new Replicate(ReplicateType.PUT, key, val, ts);
+        } else if ("DELETE".equals(subCmd)) {
+            if (parts.length != 4) {
+                return null;
+            }
+            String key = parts[2];
+            long ts;
+            try {
+                ts = Long.parseLong(parts[3]);
+                if (ts < 0) {
+                    return null;
+                }
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (!isKeyValid(key)) {
+                return null;
+            }
+            return new Replicate(ReplicateType.DELETE, key, null, ts);
+        }
+        return null;
+    }
 }
