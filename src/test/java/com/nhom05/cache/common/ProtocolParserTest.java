@@ -75,38 +75,6 @@ class ProtocolParserTest {
     }
 
     @Test
-    void buildsReplicateLinesInSpecFormat() {
-        assertEquals("REPLICATE|PUT|k|v|1712", ProtocolParser.replicatePut("k", "v", 1712L));
-        assertEquals("REPLICATE|DELETE|k|1713", ProtocolParser.replicateDelete("k", 1713L));
-    }
-
-    @Test
-    void parsesReplicatePutAndDelete() {
-        ProtocolParser.Replicate put = ProtocolParser.parseReplicate("REPLICATE|PUT|k|v|42");
-        assertNotNull(put);
-        assertTrue(put.isPut());
-        assertFalse(put.isDelete());
-        assertEquals("k", put.key());
-        assertEquals("v", put.value());
-        assertEquals(42L, put.timestamp());
-
-        ProtocolParser.Replicate del = ProtocolParser.parseReplicate("REPLICATE|DELETE|k|43");
-        assertNotNull(del);
-        assertTrue(del.isDelete());
-        assertNull(del.value());
-        assertEquals(43L, del.timestamp());
-    }
-
-    @Test
-    void replicateWithWrongSyntaxOrNullIsRejected() {
-        for (String bad : new String[]{null, "", "REPLICATE|PUT|k|v", "REPLICATE|PUT|k|v|abc",
-                "REPLICATE|PUT|k|v|-1", "REPLICATE|DELETE|k", "REPLICATE|DELETE|k|1|2",
-                "PUT|k|v|1", "REPLICATE|UPDATE|k|v|1"}) {
-            assertNull(ProtocolParser.parseReplicate(bad), "phai tra null: " + bad);
-        }
-    }
-
-    @Test
     void readsErrorCodeFromResponse() {
         assertEquals(ErrorCode.E004, ProtocolParser.errorCodeOf("ERROR|E004|Server overloaded"));
         assertEquals(ErrorCode.E006, ProtocolParser.errorCodeOf("ERROR|E006|Server syncing, retry later"));

@@ -1,9 +1,5 @@
 package com.nhom05.cache.replication;
 
-<<<<<<< HEAD
-import com.nhom05.cache.common.ErrorCode;
-=======
->>>>>>> main
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.server.KeyValueStore;
 
@@ -42,6 +38,7 @@ public final class ReplicationHandler implements AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ReplicationHandler.class.getName());
 
     private static final String OK = "OK";
+    private static final String ERR_FORMAT = "ERROR|E001|";
     private static final int CONNECT_TIMEOUT_MS = 1000;
     private static final int READ_TIMEOUT_MS = 2000;
 
@@ -50,46 +47,22 @@ public final class ReplicationHandler implements AutoCloseable {
     }
 
     private final KeyValueStore store;
-<<<<<<< HEAD
-    private volatile String peerHost;
-    private volatile int peerPort;
-=======
     /** null = chua co server du phong (cum 1 server) -> khong gui di dau. */
     private volatile Backup backup;
->>>>>>> main
 
     private final ExecutorService senderPool;
     private final ExecutorService listenerPool;
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
 
-<<<<<<< HEAD
-    public ReplicationHandler(KeyValueStore store) {
-        this(store, null, 0);
-    }
-
-    /**
-     * @param store    kho du lieu cua server nay (dung khi nhan replication)
-     * @param peerHost host cua server doi tac; null neu khong gui di dau
-     * @param peerPort cong replication cua doi tac; &lt;= 0 neu khong gui di dau
-     */
-    public ReplicationHandler(KeyValueStore store, String peerHost, int peerPort) {
-=======
     /** @param store kho du lieu cua server nay (dung khi nhan replication) */
     public ReplicationHandler(KeyValueStore store) {
->>>>>>> main
         if (store == null) {
             throw new IllegalArgumentException("store khong duoc null");
         }
         this.store = store;
         this.senderPool = Executors.newFixedThreadPool(2, daemonFactory("repl-sender"));
         this.listenerPool = Executors.newCachedThreadPool(daemonFactory("repl-listener"));
-    }
-
-    /** Cap nhat dia chi server du phong de gui ban tin replication. */
-    public void setBackup(String host, int replicationPort) {
-        this.peerHost = host;
-        this.peerPort = replicationPort;
     }
 
     private static java.util.concurrent.ThreadFactory daemonFactory(String prefix) {
@@ -105,17 +78,6 @@ public final class ReplicationHandler implements AutoCloseable {
     // Phia gui (bat dong bo)
     // ------------------------------------------------------------------
 
-<<<<<<< HEAD
-    /** Gui REPLICATE|PUT|key|value|timestamp, tra ve ngay lap tuc. */
-    public void replicatePut(String key, String value) {
-        replicatePut(key, value, System.currentTimeMillis());
-    }
-
-    public void replicatePut(String key, String value, long timestamp) {
-        if (!ProtocolParser.isKeyValid(key) || !ProtocolParser.isValueValid(value)) {
-            return;
-        }
-=======
     /** Dat server du phong (host, port replication); host null hoac port <= 0 = khong gui. */
     public void setBackup(String host, int replicationPort) {
         backup = host == null || replicationPort <= 0 ? null : new Backup(host, replicationPort);
@@ -126,59 +88,31 @@ public final class ReplicationHandler implements AutoCloseable {
      * timestamp la thoi diem ghi tren server chinh (#9 dung de so sanh ban nao moi hon).
      */
     public void replicatePut(String key, String value, long timestamp) {
->>>>>>> main
         send(ProtocolParser.replicatePut(key, value, timestamp));
     }
 
     /** Gui REPLICATE|DELETE|key|timestamp, tra ve ngay lap tuc. */
-<<<<<<< HEAD
-    public void replicateDelete(String key) {
-        replicateDelete(key, System.currentTimeMillis());
-    }
-
     public void replicateDelete(String key, long timestamp) {
-        if (!ProtocolParser.isKeyValid(key)) {
-            return;
-        }
-=======
-    public void replicateDelete(String key, long timestamp) {
->>>>>>> main
         send(ProtocolParser.replicateDelete(key, timestamp));
     }
 
     /** Dua viec gui vao thread pool rieng; moi loi deu duoc nuot lai. */
     private void send(String line) {
-<<<<<<< HEAD
-        String host = this.peerHost;
-        int port = this.peerPort;
-        if (host == null || port <= 0) {
-            return; // khong co doi tac
-        }
-        try {
-            senderPool.execute(() -> sendBlocking(line, host, port));
-=======
         Backup target = backup;
         if (target == null) {
             return; // khong co doi tac
         }
         try {
             senderPool.execute(() -> sendBlocking(target, line));
->>>>>>> main
         } catch (RuntimeException e) { // pool da dong
             LOGGER.log(Level.WARNING, "Khong dua duoc replication vao hang doi: {0}", e.toString());
         }
     }
 
     /** Gui 1 lan duy nhat, doc phan hoi xong moi dong socket. Khong retry. */
-<<<<<<< HEAD
-    private void sendBlocking(String line, String host, int port) {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-=======
     private void sendBlocking(Backup target, String line) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(target.host(), target.port()), CONNECT_TIMEOUT_MS);
->>>>>>> main
             socket.setSoTimeout(READ_TIMEOUT_MS);
             PrintWriter out = new PrintWriter(socket.getOutputStream(), false, StandardCharsets.UTF_8);
             BufferedReader in = new BufferedReader(
@@ -191,11 +125,7 @@ public final class ReplicationHandler implements AutoCloseable {
             }
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Replication toi {0}:{1} that bai: {2}",
-<<<<<<< HEAD
-                    new Object[] { host, port, e.toString() });
-=======
                     new Object[] { target.host(), target.port(), e.toString() });
->>>>>>> main
         }
     }
 
@@ -224,10 +154,6 @@ public final class ReplicationHandler implements AutoCloseable {
     public int listenerPort() {
         ServerSocket ss = serverSocket;
         return ss == null ? -1 : ss.getLocalPort();
-    }
-
-    public int getListenPort() {
-        return listenerPort();
     }
 
     private void acceptLoop(ServerSocket ss) {
@@ -262,73 +188,6 @@ public final class ReplicationHandler implements AutoCloseable {
     }
 
     /**
-<<<<<<< HEAD
-     * Ap dung 1 lenh replication vao kho (ghi qua putReplicated/deleteReplicated de
-     * ap dung LWW, tombstone, TTL va LRU). Tra ve "OK" hoac "ERROR|ma loi|...".
-     */
-    String apply(String line) {
-        if (line == null || line.isBlank()) {
-            return ProtocolParser.error(ErrorCode.E001);
-        }
-        String[] parts = line.strip().split(ProtocolParser.DELIMITER, -1);
-        if (parts.length < 4 || !"REPLICATE".equals(parts[0])) {
-            return ProtocolParser.error(ErrorCode.E001);
-        }
-        String subCmd = parts[1];
-        if ("PUT".equals(subCmd)) {
-            if (parts.length != 5) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            String key = parts[2];
-            String val = parts[3];
-            long ts;
-            try {
-                ts = Long.parseLong(parts[4]);
-                if (ts < 0) {
-                    return ProtocolParser.error(ErrorCode.E001);
-                }
-            } catch (NumberFormatException e) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            if (key.length() > ProtocolParser.MAX_KEY_LENGTH) {
-                return ProtocolParser.error(ErrorCode.E002);
-            }
-            if (!ProtocolParser.isKeyValid(key)) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            if (val.length() > ProtocolParser.MAX_VALUE_LENGTH) {
-                return ProtocolParser.error(ErrorCode.E003);
-            }
-            if (!ProtocolParser.isValueValid(val)) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            store.putReplicated(key, val, ts);
-            return OK;
-        } else if ("DELETE".equals(subCmd)) {
-            if (parts.length != 4) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            String key = parts[2];
-            long ts;
-            try {
-                ts = Long.parseLong(parts[3]);
-                if (ts < 0) {
-                    return ProtocolParser.error(ErrorCode.E001);
-                }
-            } catch (NumberFormatException e) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            if (key.length() > ProtocolParser.MAX_KEY_LENGTH) {
-                return ProtocolParser.error(ErrorCode.E002);
-            }
-            if (!ProtocolParser.isKeyValid(key)) {
-                return ProtocolParser.error(ErrorCode.E001);
-            }
-            store.deleteReplicated(key, ts);
-            return OK;
-        }
-        return ProtocolParser.error(ErrorCode.E001);
-=======
      * Ap dung 1 lenh replication vao kho (ghi truc tiep qua KeyValueStore nen TTL
      * va LRU van hoat dong nhu thuong). Tra ve "OK" hoac "ERROR|E001|...".
      * Timestamp moi duoc kiem tra la so; so sanh ban moi/cu lam o #9.
@@ -342,12 +201,11 @@ public final class ReplicationHandler implements AutoCloseable {
             return ERR_FORMAT + "key/value khong hop le";
         }
         if (r.isPut()) {
-            store.put(r.key(), r.value());
+            store.putReplicated(r.key(), r.value(), r.timestamp());
         } else {
-            store.delete(r.key());
+            store.deleteReplicated(r.key(), r.timestamp());
         }
         return OK;
->>>>>>> main
     }
 
     /** Dong listener va cac thread pool. */

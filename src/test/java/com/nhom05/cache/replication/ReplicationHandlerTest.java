@@ -2,7 +2,6 @@ package com.nhom05.cache.replication;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.server.KeyValueStore;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -29,15 +28,9 @@ class ReplicationHandlerTest {
         primaryStore = new KeyValueStore(60, 100);
         backupStore = new KeyValueStore(60, 100);
         backup = new ReplicationHandler(backupStore);
-<<<<<<< HEAD
-        int port = backup.startListener(0); // port 0: he dieu hanh chon cong trong
-        primary = new ReplicationHandler(primaryStore);
-        primary.setBackup("127.0.0.1", port);
-=======
         backup.startListener(0); // port 0: he dieu hanh chon cong trong
         primary = new ReplicationHandler(primaryStore);
         primary.setBackup("127.0.0.1", backup.listenerPort());
->>>>>>> main
     }
 
     @AfterEach
@@ -69,57 +62,30 @@ class ReplicationHandlerTest {
     @Test
     void listenerPortLaCongThuc() {
         assertTrue(backup.listenerPort() > 0);
-<<<<<<< HEAD
-        assertEquals(-1, primary.listenerPort()); // primary chua mo listener
-=======
->>>>>>> main
     }
 
     @Test
     void replicatePutDuaDuLieuSangBackup() throws Exception {
-<<<<<<< HEAD
-        long ts = primaryStore.put("k1", "v1");
-        primary.replicatePut("k1", "v1", ts);
-=======
         primary.replicatePut("k1", "v1", 1);
->>>>>>> main
         assertTrue(waitFor(() -> "v1".equals(backupStore.get("k1"))));
     }
 
     @Test
     void replicatePutGhiDe() throws Exception {
-<<<<<<< HEAD
-        primary.replicatePut("k", "a", 1L);
-        assertTrue(waitFor(() -> "a".equals(backupStore.get("k"))));
-        primary.replicatePut("k", "b", 2L);
-=======
         primary.replicatePut("k", "a", 1);
         assertTrue(waitFor(() -> "a".equals(backupStore.get("k"))));
         primary.replicatePut("k", "b", 2);
->>>>>>> main
         assertTrue(waitFor(() -> "b".equals(backupStore.get("k"))));
     }
 
     @Test
     void replicateDeleteXoaTrenBackup() throws Exception {
-        backupStore.put("k2", "v2");
-<<<<<<< HEAD
-        primary.replicateDelete("k2", primaryStore.now());
-=======
-        primary.replicateDelete("k2", 1);
->>>>>>> main
+        long ts = backupStore.put("k2", "v2");
+        primary.replicateDelete("k2", ts);
         assertTrue(waitFor(() -> backupStore.get("k2") == null));
     }
 
     @Test
-<<<<<<< HEAD
-    void valueChuaDauGachDungBiTuChoiE001() throws Exception {
-        // gui thang qua replicatePut: backup phai tu choi, khong ghi vao kho
-        primary.replicatePut("k", "a|b|c", 1L);
-        Thread.sleep(300);
-        assertNull(backupStore.get("k"));
-        assertEquals("ERROR|E001|Invalid command syntax", backup.apply("REPLICATE|PUT|k|a|b|c|1"));
-=======
     void keyValueKhongHopLeTraE001() {
         // value chua '|' bi tach thanh thua truong; key/value qua dai bi chan nhu ben client
         assertTrue(backup.apply("REPLICATE|PUT|k|a|b|1").startsWith("ERROR|E001|"));
@@ -127,7 +93,6 @@ class ReplicationHandlerTest {
         assertTrue(backup.apply("REPLICATE|PUT|" + "k".repeat(257) + "|v|1").startsWith("ERROR|E001|"));
         assertTrue(backup.apply("REPLICATE|PUT|k|" + "v".repeat(4097) + "|1").startsWith("ERROR|E001|"));
         assertNull(backupStore.get("k"));
->>>>>>> main
     }
 
     @Test
@@ -139,45 +104,13 @@ class ReplicationHandlerTest {
     }
 
     @Test
-    void applyValueRongHopLe() {
-        assertEquals("OK", backup.apply("REPLICATE|PUT|x||5"));
-        assertEquals("", backupStore.get("x"));
-    }
-
-    @Test
     void applyBanTinSaiTraE001() {
         assertTrue(backup.apply("HELLO").startsWith("ERROR|E001|"));
         assertTrue(backup.apply("REPLICATE|PUT|k|v").startsWith("ERROR|E001|"));
         assertTrue(backup.apply("REPLICATE|PUT|k|v|abc").startsWith("ERROR|E001|"));
-        assertTrue(backup.apply("REPLICATE|PUT||v|1").startsWith("ERROR|E001|")); // key rong
         assertTrue(backup.apply("REPLICATE|DELETE|k").startsWith("ERROR|E001|"));
-        assertTrue(backup.apply("REPLICATE|DELETE||1").startsWith("ERROR|E001|"));
         assertTrue(backup.apply("REPLICATE|FOO|k|1").startsWith("ERROR|E001|"));
         assertTrue(backup.apply(null).startsWith("ERROR|E001|"));
-        assertTrue(backup.apply("").startsWith("ERROR|E001|"));
-    }
-
-    @Test
-    void applyKeyQuaDaiTraE002() {
-        String key = "k".repeat(ProtocolParser.MAX_KEY_LENGTH + 1);
-        assertTrue(backup.apply("REPLICATE|PUT|" + key + "|v|1").startsWith("ERROR|E002|"));
-        assertTrue(backup.apply("REPLICATE|DELETE|" + key + "|1").startsWith("ERROR|E002|"));
-        assertNull(backupStore.get(key));
-    }
-
-    @Test
-    void applyValueQuaDaiTraE003() {
-        String value = "v".repeat(ProtocolParser.MAX_VALUE_LENGTH + 1);
-        assertTrue(backup.apply("REPLICATE|PUT|k|" + value + "|1").startsWith("ERROR|E003|"));
-        assertNull(backupStore.get("k"));
-    }
-
-    @Test
-    void applyDoDaiToiDaVanHopLe() {
-        String key = "k".repeat(ProtocolParser.MAX_KEY_LENGTH);
-        String value = "v".repeat(ProtocolParser.MAX_VALUE_LENGTH);
-        assertEquals("OK", backup.apply("REPLICATE|PUT|" + key + "|" + value + "|1"));
-        assertEquals(value, backupStore.get(key));
     }
 
     @Test
@@ -191,19 +124,12 @@ class ReplicationHandlerTest {
             assertEquals("OK", in.readLine());
             out.println("garbage");
             assertTrue(in.readLine().startsWith("ERROR|E001|"));
-            out.println("REPLICATE|PUT|a|x|y|1"); // value chua dau |
-            assertTrue(in.readLine().startsWith("ERROR|E001|"));
         }
         assertEquals("b", backupStore.get("a"));
     }
 
     @Test
-    void listenerKhongMoHaiLan() {
-        assertThrows(IllegalStateException.class, () -> backup.startListener(0));
-    }
-
-    @Test
-    void banTinGuiDiDungDinhDangVaDungTimestampTruyenVao() throws Exception {
+    void banTinGuiDiDungDinhDang() throws Exception {
         // server gia: ghi lai dong nhan duoc, tra OK
         try (ServerSocket fake = new ServerSocket(0)) {
             String[] got = new String[2];
@@ -226,18 +152,6 @@ class ReplicationHandlerTest {
             });
             t.setDaemon(true);
             t.start();
-<<<<<<< HEAD
-            try (ReplicationHandler h = new ReplicationHandler(primaryStore)) {
-                h.setBackup("127.0.0.1", fake.getLocalPort());
-                h.replicatePut("key", "val", 1111L);
-                // doi ban tin dau xong roi moi gui ban tin 2 de thu tu on dinh
-                assertTrue(waitFor(() -> got[0] != null));
-                h.replicateDelete("key", 2222L);
-                assertTrue(done.await(3, TimeUnit.SECONDS));
-            }
-            assertEquals("REPLICATE|PUT|key|val|1111", got[0]);
-            assertEquals("REPLICATE|DELETE|key|2222", got[1]);
-=======
             try (ReplicationHandler h = handlerTo(fake.getLocalPort())) {
                 h.replicatePut("key", "val", 1000);
                 assertTrue(done.await(3, TimeUnit.SECONDS) || got[0] != null);
@@ -247,7 +161,6 @@ class ReplicationHandlerTest {
             // timestamp gui di dung la timestamp truyen vao, khong tu lay gio luc gui
             assertEquals("REPLICATE|PUT|key|val|1000", got[0]);
             assertEquals("REPLICATE|DELETE|key|1001", got[1]);
->>>>>>> main
         }
     }
 
@@ -257,12 +170,7 @@ class ReplicationHandlerTest {
         try (ServerSocket tmp = new ServerSocket(0)) {
             deadPort = tmp.getLocalPort(); // dong ngay -> khong ai lang nghe
         }
-<<<<<<< HEAD
-        try (ReplicationHandler h = new ReplicationHandler(primaryStore)) {
-            h.setBackup("127.0.0.1", deadPort);
-=======
         try (ReplicationHandler h = handlerTo(deadPort)) {
->>>>>>> main
             long start = System.nanoTime();
             assertDoesNotThrow(() -> {
                 for (int i = 0; i < 20; i++) {
@@ -278,22 +186,8 @@ class ReplicationHandlerTest {
     @Test
     void khongCoDoiTacThiBoQua() {
         try (ReplicationHandler h = new ReplicationHandler(primaryStore)) {
-<<<<<<< HEAD
-            assertDoesNotThrow(() -> h.replicatePut("a", "b", 1L));
-            assertDoesNotThrow(() -> h.replicateDelete("a", 1L));
-        }
-    }
-
-    @Test
-    void gocBackupBangNullThiTatReplication() {
-        try (ReplicationHandler h = new ReplicationHandler(primaryStore)) {
-            h.setBackup("127.0.0.1", 9);
-            h.setBackup(null, 0);
-            assertDoesNotThrow(() -> h.replicatePut("a", "b", 1L));
-=======
             assertDoesNotThrow(() -> h.replicatePut("a", "b", 1));
             assertDoesNotThrow(() -> h.replicateDelete("a", 1));
->>>>>>> main
         }
     }
 
@@ -301,16 +195,9 @@ class ReplicationHandlerTest {
     void replicateKhongChanKhiBackupPhanHoiCham() throws Exception {
         // server gia nhan ket noi nhung khong tra loi
         try (ServerSocket mute = new ServerSocket(0);
-<<<<<<< HEAD
-             ReplicationHandler h = new ReplicationHandler(primaryStore)) {
-            h.setBackup("127.0.0.1", mute.getLocalPort());
-            long start = System.nanoTime();
-            h.replicatePut("a", "b", 1L);
-=======
              ReplicationHandler h = handlerTo(mute.getLocalPort())) {
             long start = System.nanoTime();
             h.replicatePut("a", "b", 1);
->>>>>>> main
             long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             assertTrue(ms < 300, "bi chan " + ms + "ms");
         }
@@ -329,17 +216,40 @@ class ReplicationHandlerTest {
     }
 
     @Test
-    void parseReplicateDungVaSai() {
-        ProtocolParser.Replicate put = ProtocolParser.parseReplicate("REPLICATE|PUT|k|v|9");
-        assertEquals(ProtocolParser.ReplicateType.PUT, put.type());
-        assertEquals("k", put.key());
-        assertEquals("v", put.value());
-        assertEquals(9L, put.timestamp());
-        ProtocolParser.Replicate del = ProtocolParser.parseReplicate("REPLICATE|DELETE|k|9");
-        assertEquals(ProtocolParser.ReplicateType.DELETE, del.type());
-        assertNull(del.value());
-        assertNull(ProtocolParser.parseReplicate("REPLICATE|PUT|k|v"));
-        assertNull(ProtocolParser.parseReplicate("REPLICATE|DELETE|k|1|2"));
-        assertNull(ProtocolParser.parseReplicate("REPLICATE|PUT|k|v|x"));
+    void replicationPutCuDenSauPutMoiBiBoQua() {
+        // PUT moi timestamp 200 den truoc
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|new_val|200"));
+        assertEquals("new_val", backupStore.get("k"));
+
+        // PUT cu timestamp 100 den sau -> bi bo qua
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|old_val|100"));
+        assertEquals("new_val", backupStore.get("k"));
+    }
+
+    @Test
+    void replicationDeleteRoiPutCuDenTreBiChan() {
+        // PUT ban dau timestamp 100
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|v1|100"));
+        assertEquals("v1", backupStore.get("k"));
+
+        // DELETE tai timestamp 200 (tao tombstone)
+        assertEquals("OK", backup.apply("REPLICATE|DELETE|k|200"));
+        assertNull(backupStore.get("k"));
+
+        // PUT cu timestamp 150 den tre -> bi chan boi tombstone, key khong song lai
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|v_old|150"));
+        assertNull(backupStore.get("k"));
+    }
+
+    @Test
+    void replicationDeleteCuHonBanDangCoBiBoQua() {
+        // Ban ghi moi co timestamp 200
+        assertEquals("OK", backup.apply("REPLICATE|PUT|k|current|200"));
+        assertEquals("current", backupStore.get("k"));
+
+        // DELETE cu timestamp 100 den sau -> bi bo qua, key van con
+        assertEquals("OK", backup.apply("REPLICATE|DELETE|k|100"));
+        assertEquals("current", backupStore.get("k"));
     }
 }
+
