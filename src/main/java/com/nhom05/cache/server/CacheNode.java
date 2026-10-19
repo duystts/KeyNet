@@ -41,7 +41,7 @@ public final class CacheNode implements AutoCloseable {
         this.config = config;
         ServerAddress self = config.self();
         this.server = new CacheServer(self.port(), config.ttlSeconds(), config.maxEntries());
-        this.replication = config.serverCount() > 1 ? new ReplicationHandler(server.store()) : null;
+        this.replication = config.serverCount() > 1 ? new ReplicationHandler(server.store(), config) : null;
         ServerAddress registry = config.registry();
         this.heartbeat = new HeartbeatSender(registry.host(), registry.port(), config.serverIndex(),
                 self.host(), self.port(), heartbeatIntervalSeconds, server::keyCount, server::requestCount);
