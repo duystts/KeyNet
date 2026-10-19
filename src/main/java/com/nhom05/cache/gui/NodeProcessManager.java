@@ -169,6 +169,30 @@ public final class NodeProcessManager {
     }
 
     /**
+     * Doc dong cuoi cung khac rong tu file log cua server tuong ung (logs/server-<serverIndex>.log).
+     *
+     * @param serverIndex chi so server
+     * @return dong log cuoi cung hoac null neu file khong ton tai hoac rong
+     */
+    public static String readLastLogLine(int serverIndex) {
+        File logFile = new File("logs", "server-" + serverIndex + ".log");
+        if (!logFile.exists() || !logFile.isFile()) {
+            return null;
+        }
+        try {
+            java.util.List<String> lines = java.nio.file.Files.readAllLines(logFile.toPath(), StandardCharsets.UTF_8);
+            for (int i = lines.size() - 1; i >= 0; i--) {
+                String line = lines.get(i).trim();
+                if (!line.isEmpty()) {
+                    return line;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
      * Lay classpath hien tai cua ung dung.
      */
     public static String resolveClassPath() {

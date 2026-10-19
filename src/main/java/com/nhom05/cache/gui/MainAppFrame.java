@@ -24,9 +24,13 @@ public class MainAppFrame extends JFrame {
     private final ClientPanel clientPanel;
 
     public MainAppFrame(ServerConfig config, RegistryClient registryClient, CacheClient cacheClient) {
+        this(config, registryClient, cacheClient, "config/config.properties");
+    }
+
+    public MainAppFrame(ServerConfig config, RegistryClient registryClient, CacheClient cacheClient, String configPath) {
         super("KeyNet — Hệ Thống Cache Phân Tán (Nhóm 05)");
 
-        this.dashboardPanel = new DashboardPanel(config, registryClient);
+        this.dashboardPanel = new DashboardPanel(config, registryClient, configPath);
         this.clientPanel = new ClientPanel(cacheClient);
 
         JTabbedPane rootTabbedPane = new JTabbedPane();
@@ -84,8 +88,9 @@ public class MainAppFrame extends JFrame {
         CacheClient cacheClient = new CacheClient(config.servers());
 
         final ServerConfig finalConfig = config;
+        final String finalConfigPath = configPath;
         SwingUtilities.invokeLater(() -> {
-            MainAppFrame frame = new MainAppFrame(finalConfig, regClient, cacheClient);
+            MainAppFrame frame = new MainAppFrame(finalConfig, regClient, cacheClient, finalConfigPath);
             frame.setVisible(true);
         });
     }

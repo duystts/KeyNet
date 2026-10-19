@@ -76,10 +76,14 @@ public class DashboardPanel extends JPanel {
     private Boolean previousRegistryConnected = null;
 
     public DashboardPanel(ServerConfig config, RegistryClient registryClient) {
-        this(config, registryClient, "config/config.properties");
+        this(config, registryClient, "config/config.properties", true);
     }
 
     public DashboardPanel(ServerConfig config, RegistryClient registryClient, String configPath) {
+        this(config, registryClient, configPath, true);
+    }
+
+    public DashboardPanel(ServerConfig config, RegistryClient registryClient, String configPath, boolean autoStartRefresh) {
         this.config = config;
         this.registryClient = registryClient;
         this.configPath = (configPath != null && !configPath.isBlank()) ? configPath : "config/config.properties";
@@ -92,10 +96,11 @@ public class DashboardPanel extends JPanel {
 
         // Timer dinh ky 2 giay, chay tren EDT de goi SwingWorker
         this.refreshTimer = new Timer(DEFAULT_REFRESH_INTERVAL_MS, e -> refresh());
-        this.refreshTimer.start();
-
-        // Nap du lieu lan dau
-        refresh();
+        if (autoStartRefresh) {
+            this.refreshTimer.start();
+            // Nap du lieu lan dau
+            refresh();
+        }
     }
 
     private void initUI() {
@@ -433,6 +438,18 @@ public class DashboardPanel extends JPanel {
         NodeDisplayInfo node = tableModel.getNodeAt(row);
         if (node == null) return;
 
+        // Chan khi node dang UP de tranh tao tien trinh loi Address already in use
+        if (node.isUp()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Server #" + node.index() + " hiện đang hoạt động (UP). Không thể bật lại node đang chạy!",
+                    "Cảnh báo",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            appendLog("[BẬT LẠI BỊ CHẶN] Server #" + node.index() + " hiện đang hoạt động (UP). Hãy sập node trước nếu muốn khởi động lại.");
+            return;
+        }
+
         btnCrashNode.setEnabled(false);
         btnRestartNode.setEnabled(false);
         statusFeedbackLabel.setText("Đang khởi động lại Server #" + node.index() + "...");
@@ -441,7 +458,18 @@ public class DashboardPanel extends JPanel {
         SwingWorker<Process, Void> worker = new SwingWorker<>() {
             @Override
             protected Process doInBackground() throws Exception {
-                return NodeProcessManager.startNode(node.index(), configPath);
+                Process p = NodeProcessManager.startNode(node.index(), configPath);
+                // Cho khoang 1s de kiem tra tien trinh co chet som hay khong
+                Thread.sleep(1000);
+                if (!p.isAlive()) {
+                    String lastLog = NodeProcessManager.readLastLogLine(node.index());
+                    String msg = "Tiến trình dừng ngay sau khi bật (exitCode: " + p.exitValue() + ").";
+                    if (lastLog != null && !lastLog.isBlank()) {
+                        msg += " Dòng cuối log: " + lastLog;
+                    }
+                    throw new java.io.IOException(msg);
+                }
+                return p;
             }
 
             @Override
@@ -454,8 +482,15 @@ public class DashboardPanel extends JPanel {
                     t.setRepeats(false);
                     t.start();
                 } catch (Exception e) {
-                    appendLog("[BẬT LẠI NODE LỖI] Không thể khởi chạy Server #" + node.index() + ": " + e.getMessage());
-                    statusFeedbackLabel.setText("Lỗi khởi chạy: " + e.getMessage());
+                    Throwable cause = (e.getCause() != null) ? e.getCause() : e;
+                    appendLog("[BẬT LẠI THẤT BẠI] " + cause.getMessage());
+                    statusFeedbackLabel.setText("Lỗi khởi chạy: " + cause.getMessage());
+                    JOptionPane.showMessageDialog(
+                            DashboardPanel.this,
+                            "Không thể khởi chạy Server #" + node.index() + ":\n" + cause.getMessage(),
+                            "Lỗi khởi chạy",
+                            JOptionPane.ERROR_MESSAGE
+                    );
                 } finally {
                     btnCrashNode.setEnabled(true);
                     btnRestartNode.setEnabled(true);
@@ -626,8 +661,32 @@ public class DashboardPanel extends JPanel {
         totalRequestsCardValue.setText(String.format("%,d", model.totalRequests()));
         lastUpdatedCardValue.setText(model.lastUpdatedTime());
 
-        // 3. Cap nhat Bang Server
+        // 3. Cap nhat Bang Server va bao toan lua chon dong hien tai
+        int selectedRow = serverTable.getSelectedRow();
+        int selectedNodeIndex = -1;
+        if (selectedRow >= 0 && selectedRow < tableModel.getRowCount()) {
+            NodeDisplayInfo selectedNode = tableModel.getNodeAt(selectedRow);
+            if (selectedNode != null) {
+                selectedNodeIndex = selectedNode.index();
+            }
+        }
+
         tableModel.setNodes(model.nodes());
+
+        // Phuc hoi lai selection cho node dang duoc chon
+        if (selectedNodeIndex >= 0) {
+            for (int r = 0; r < tableModel.getRowCount(); r++) {
+                NodeDisplayInfo n = tableModel.getNodeAt(r);
+                if (n != null && n.index() == selectedNodeIndex) {
+                    serverTable.setRowSelectionInterval(r, r);
+                    lblSelectedNodeInfo.setText(String.format(
+                            "Đang chọn: Server #%d (%s:%d | Port Replication: %d) - Trạng thái: %s",
+                            n.index(), n.host(), n.clientPort(), n.replicationPort(), n.status()
+                    ));
+                    break;
+                }
+            }
+        }
 
         // Ghi log su kien chuyen trang thai cua tung node
         for (NodeDisplayInfo node : model.nodes()) {
@@ -672,8 +731,13 @@ public class DashboardPanel extends JPanel {
         private List<NodeDisplayInfo> nodes = List.of();
 
         public void setNodes(List<NodeDisplayInfo> newNodes) {
+            int oldSize = this.nodes.size();
             this.nodes = (newNodes != null) ? List.copyOf(newNodes) : List.of();
-            fireTableDataChanged();
+            if (oldSize == this.nodes.size() && oldSize > 0) {
+                fireTableRowsUpdated(0, oldSize - 1);
+            } else {
+                fireTableDataChanged();
+            }
         }
 
         public NodeDisplayInfo getNodeAt(int row) {
