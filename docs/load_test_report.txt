@@ -1,0 +1,63 @@
+================================================================================
+                    KEYNET DISTRIBUTED CACHE - LOAD TEST REPORT                 
+================================================================================
+Thoi gian tao bao cao   : 2026-10-19 22:58:07
+Phien ban he thong      : KeyNet 1.0-SNAPSHOT (Nhom 05)
+Kiem thu vien           : Nguyen Van Nhat (MSSV: 2380601556)
+Issue trien khai        : #17 Load tester
+
+--------------------------------------------------------------------------------
+1. THONG SO KIEM THU (TEST CONFIGURATION)
+--------------------------------------------------------------------------------
+- So luong luong dong thoi (N threads)   : 10
+- So request tren moi luong (M requests)  : 200
+- Tong so request thuc te                : 2000
+- Ty le workload                         : 50% PUT / 50% GET
+- Pham vi key phan tan (Key count)       : 20 keys
+- Danh sach Cache Server muc tieu        :
+    * Server #0: 127.0.0.1:5001
+    * Server #1: 127.0.0.1:5002
+    * Server #2: 127.0.0.1:5003
+
+--------------------------------------------------------------------------------
+2. KET QUA TONG QUAN (PERFORMANCE & RELIABILITY SUMMARY)
+--------------------------------------------------------------------------------
+- Tong thoi gian chay (Duration)         : 702 ms (0.70 s)
+- Throughput dat duoc                    : 2849.00 req/s
+- Tong so request da xu ly               : 2000
+- So request thanh cong                  : 2000
+- So request that bai                    : 0
+- Ty le thanh cong (Success Rate)        : 100.00 %
+
+--------------------------------------------------------------------------------
+3. THONG SO DO TRE CHI TIET (LATENCY STATISTICS - MS)
+--------------------------------------------------------------------------------
+- Do tre trung binh (Average Latency)    : 3.00 ms
+- Do tre nho nhat (Min Latency)          : 0.66 ms
+- Do tre lon nhat (Max Latency)          : 130.19 ms
+- Trung vi (p50 Latency)                 : 1.85 ms
+- Phan tram 95th (p95 Latency)           : 7.39 ms
+- Phan tram 99th (p99 Latency)           : 24.71 ms
+
+--------------------------------------------------------------------------------
+4. PHAN TICH CHI TIET THEO LOAI TAC VU (OPERATION BREAKDOWN)
+--------------------------------------------------------------------------------
++ Thao tac PUT:
+  - Tong so request PUT                  : 1019
+  - Thanh cong (phan hoi OK)              : 1019 (100.00 %)
+  - That bai                              : 0
+
++ Thao tac GET:
+  - Tong so request GET                  : 981
+  - Thanh cong (phan hoi VALUE / NOTFOUND): 981 (100.00 %)
+    * Cache Hits (tra ve VALUE|...)       : 961
+    * Cache Misses / LRU (tra ve NOTFOUND): 20
+  - That bai (ERROR|... hoac mat ket noi) : 0
+
+--------------------------------------------------------------------------------
+5. KET LUAN KIEM DINH (VERIFICATION CRITERIA)
+--------------------------------------------------------------------------------
+[x] Tuan thu dung dac ta giao thuc: PUT -> OK, GET -> VALUE|... hoac NOTFOUND.
+[x] Loi phan hoi ERROR|... hoac mat ket noi socket duoc tinh la THAT BAI.
+[x] Bao cao duoc ghi de docs/load_test_report.txt (khong noi them) dung dac ta #17.
+================================================================================
