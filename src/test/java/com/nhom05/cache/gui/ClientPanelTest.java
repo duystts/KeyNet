@@ -36,4 +36,23 @@ class ClientPanelTest {
         assertEquals(1, historyModel.keyCount());
         assertEquals(1, historyModel.allCommandLogs().size());
     }
+
+    @Test
+    void testProtocolValidationErrors() {
+        // Kiem tra ProtocolParser.keyError va valueError bat dung E002, E003
+        String keyWithPipe = com.nhom05.cache.common.ProtocolParser.keyError("key|123");
+        assertNotNull(keyWithPipe);
+        assertTrue(keyWithPipe.startsWith("ERROR|E002|"));
+
+        String emptyKey = com.nhom05.cache.common.ProtocolParser.keyError("");
+        assertNotNull(emptyKey);
+        assertTrue(emptyKey.startsWith("ERROR|E002|"));
+
+        String valueWithPipe = com.nhom05.cache.common.ProtocolParser.valueError("val|xyz");
+        assertNotNull(valueWithPipe);
+        assertTrue(valueWithPipe.startsWith("ERROR|E003|"));
+
+        assertNull(com.nhom05.cache.common.ProtocolParser.keyError("validKey"));
+        assertNull(com.nhom05.cache.common.ProtocolParser.valueError("validValue"));
+    }
 }

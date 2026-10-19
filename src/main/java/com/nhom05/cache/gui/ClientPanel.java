@@ -440,8 +440,17 @@ public class ClientPanel extends JPanel {
         String key = txtKey.getText().strip();
         if (key.isEmpty() || cacheClient == null || cacheClient.router() == null) {
             lblHashRouteInfo.setText("Nhập Key để xem định tuyến Server chính và Server dự phòng...");
+            lblHashRouteInfo.setForeground(new Color(21, 101, 192));
             return;
         }
+
+        String kErr = ProtocolParser.keyError(key);
+        if (kErr != null) {
+            lblHashRouteInfo.setText(kErr);
+            lblHashRouteInfo.setForeground(COLOR_DANGER_TEXT);
+            return;
+        }
+        lblHashRouteInfo.setForeground(new Color(21, 101, 192));
 
         int n = cacheClient.router().serverCount();
         int primary = cacheClient.router().primaryIndex(key);
@@ -460,8 +469,11 @@ public class ClientPanel extends JPanel {
 
     private void handleInfo() {
         String key = txtKey.getText().strip();
-        if (key.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Vui lòng nhập Key trước khi bấm INFO!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+        String kErr = ProtocolParser.keyError(key);
+        if (kErr != null) {
+            displayResponseResult(kErr, -1, false, false);
+            lblFeedbackStatus.setText("Lỗi: " + kErr);
+            JOptionPane.showMessageDialog(this, kErr, "Lỗi cú pháp Key", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -486,8 +498,21 @@ public class ClientPanel extends JPanel {
         String key = txtKey.getText().strip();
         String value = txtValue.getText();
 
-        if (key.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Key không được để trống!", "Lỗi", JOptionPane.WARNING_MESSAGE);
+        String kErr = ProtocolParser.keyError(key);
+        if (kErr != null) {
+            displayResponseResult(kErr, -1, false, false);
+            lblFeedbackStatus.setText("Lỗi: " + kErr);
+            historyModel.logCommand("PUT", key, value, -1, false, kErr);
+            JOptionPane.showMessageDialog(this, kErr, "Lỗi cú pháp Key", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String vErr = ProtocolParser.valueError(value);
+        if (vErr != null) {
+            displayResponseResult(vErr, -1, false, false);
+            lblFeedbackStatus.setText("Lỗi: " + vErr);
+            historyModel.logCommand("PUT", key, value, -1, false, vErr);
+            JOptionPane.showMessageDialog(this, vErr, "Lỗi cú pháp Value", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -503,8 +528,12 @@ public class ClientPanel extends JPanel {
 
     private void handleGet() {
         String key = txtKey.getText().strip();
-        if (key.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Key không được để trống!", "Lỗi", JOptionPane.WARNING_MESSAGE);
+        String kErr = ProtocolParser.keyError(key);
+        if (kErr != null) {
+            displayResponseResult(kErr, -1, false, false);
+            lblFeedbackStatus.setText("Lỗi: " + kErr);
+            historyModel.logCommand("GET", key, "—", -1, false, kErr);
+            JOptionPane.showMessageDialog(this, kErr, "Lỗi cú pháp Key", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -524,8 +553,12 @@ public class ClientPanel extends JPanel {
 
     private void handleDelete() {
         String key = txtKey.getText().strip();
-        if (key.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Key không được để trống!", "Lỗi", JOptionPane.WARNING_MESSAGE);
+        String kErr = ProtocolParser.keyError(key);
+        if (kErr != null) {
+            displayResponseResult(kErr, -1, false, false);
+            lblFeedbackStatus.setText("Lỗi: " + kErr);
+            historyModel.logCommand("DELETE", key, "—", -1, false, kErr);
+            JOptionPane.showMessageDialog(this, kErr, "Lỗi cú pháp Key", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
