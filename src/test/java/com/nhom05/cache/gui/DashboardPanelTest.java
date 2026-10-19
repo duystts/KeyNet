@@ -48,4 +48,44 @@ class DashboardPanelTest {
         // Dung timer
         panel.stopAutoRefresh();
     }
+
+    @Test
+    void testNodeControlButtonsAndSelection() {
+        ServerConfig config = ServerConfig.of(
+                List.of(
+                        new ServerConfig.ServerAddress("127.0.0.1", 5001),
+                        new ServerConfig.ServerAddress("127.0.0.1", 5002)
+                ),
+                0
+        );
+
+        RegistryClient client = new RegistryClient("127.0.0.1", 6000);
+        DashboardPanel panel = new DashboardPanel(config, client);
+
+        assertNotNull(panel.btnCrashNode());
+        assertNotNull(panel.btnRestartNode());
+        assertNotNull(panel.lblSelectedNodeInfo());
+
+        List<NodeDisplayInfo> nodes = List.of(
+                new NodeDisplayInfo(0, "127.0.0.1", 5001, 6001, DashboardDataModel.STATUS_UP, true, 5, 20, 1),
+                new NodeDisplayInfo(1, "127.0.0.1", 5002, 6002, DashboardDataModel.STATUS_DOWN, false, 0, 0, 0)
+        );
+        DashboardDataModel model = new DashboardDataModel(true, "127.0.0.1:6000", nodes, 2, 1, 5, 20, "12:00:00");
+        panel.updateView(model);
+
+        // Chon dong 0
+        panel.serverTable().setRowSelectionInterval(0, 0);
+        String selectedText = panel.lblSelectedNodeInfo().getText();
+        assertTrue(selectedText.contains("Server #0"));
+        assertTrue(selectedText.contains("5001"));
+        assertTrue(selectedText.contains("6001"));
+
+        // Chon dong 1
+        panel.serverTable().setRowSelectionInterval(1, 1);
+        String selectedText1 = panel.lblSelectedNodeInfo().getText();
+        assertTrue(selectedText1.contains("Server #1"));
+        assertTrue(selectedText1.contains("5002"));
+
+        panel.stopAutoRefresh();
+    }
 }
