@@ -60,7 +60,7 @@ public final class ServerConfig {
         return fromProperties(props);
     }
 
-    public static ServerConfig fromProperties(Properties props) {
+    static ServerConfig fromProperties(Properties props) {
         List<ServerAddress> servers = new ArrayList<>();
         for (int i = 0; props.containsKey("server." + i + ".host"); i++) {
             String host = props.getProperty("server." + i + ".host").strip();
@@ -114,17 +114,7 @@ public final class ServerConfig {
         return servers.size();
     }
 
-    /** Tong so server trong cum (alias cua serverCount). */
-    public int size() {
-        return servers.size();
-    }
-
     public int serverIndex() {
-        return serverIndex;
-    }
-
-    /** Chi so cua chinh server nay trong cum (alias cua serverIndex). */
-    public int selfIndex() {
         return serverIndex;
     }
 

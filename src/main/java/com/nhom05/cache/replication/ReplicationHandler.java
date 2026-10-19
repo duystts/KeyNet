@@ -232,9 +232,6 @@ public final class ReplicationHandler implements AutoCloseable {
     // Phuc hoi du lieu khi khoi dong lai (SYNC & Recover - Issue #10)
     // ------------------------------------------------------------------
 
-    public KeyValueStore store() {
-        return store;
-    }
 
     /**
      * Gui lenh SYNC toi server doi tac de keo du lieu ve.
@@ -290,23 +287,23 @@ public final class ReplicationHandler implements AutoCloseable {
     /**
      * Phuc hoi du lieu khi server khoi dong lai sau su co.
      * Keo du lieu tu server ke sau (next) va server ke truoc (prev).
-     * Chi giu key neu owner == selfIndex hoac owner == prevIndex.
+     * Chi giu key neu owner == serverIndex hoac owner == prevIndex.
      * Tra ve tong so key da nap thanh cong.
      */
     public int recover(ServerConfig config) {
         if (config == null) {
             return 0;
         }
-        int n = config.size();
+        int n = config.serverCount();
         if (n <= 1) {
             return 0;
         }
-        int i = config.selfIndex();
+        int i = config.serverIndex();
         int next = (i + 1) % n;
         int prev = (i - 1 + n) % n;
 
         Predicate<String> partitionFilter = key -> {
-            int owner = HashUtil.selectServer(key, n);
+            int owner = HashUtil.computeServerIndex(key, n);
             return owner == i || owner == prev;
         };
 
