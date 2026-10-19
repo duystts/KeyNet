@@ -34,15 +34,39 @@ mvn package    # build target/keynet.jar
 
 Cấu hình cluster: [`config/config.properties`](./config/config.properties).
 
-### Chạy Cache Server
+### Chạy cả cụm (Registry + 3 Cache Server)
+
+Mỗi lệnh chạy ở 1 cửa sổ terminal riêng, **bật Registry trước**:
 
 ```bash
-java -jar target/keynet.jar config/config.properties 0   # server #0, port 5001
-java -jar target/keynet.jar config/config.properties 1   # server #1, port 5002
-java -jar target/keynet.jar config/config.properties 2   # server #2, port 5003
+java -cp target/keynet.jar com.nhom05.cache.registry.RegistryServer      # Registry, port 6000
+java -jar target/keynet.jar config/config.properties 0   # server #0, port 5001 (replication 6001)
+java -jar target/keynet.jar config/config.properties 1   # server #1, port 5002 (replication 6002)
+java -jar target/keynet.jar config/config.properties 2   # server #2, port 5003 (replication 6003)
 ```
 
 Tham số thứ 2 (serverIndex) ghi đè `cache.serverIndex` trong file, nên 3 server dùng chung 1 file cấu hình.
+
+Khi khởi động, mỗi server: mở port replication (port client + 1000) → lấy lại dữ liệu từ 2 server kề (`recover`) → mở port client → `recover` thêm 1 lần → gửi heartbeat 3 giây/lần tới Registry. Mỗi PUT/DELETE thành công được gửi bất đồng bộ sang server dự phòng `(i+1) mod N`.
+
+Client dòng lệnh (tự failover sang server dự phòng, in kèm server đã trả lời):
+
+```bash
+java -cp target/keynet.jar com.nhom05.cache.client.ClientConsole config/config.properties
+> PUT username Phạm Anh Duy
+OK  (server #0)
+```
+
+Trên Windows chạy `chcp 65001` trước để hiển thị tiếng Việt đúng.
+
+Xem trạng thái cụm và thử tắt server:
+
+```bash
+printf 'STATS\n' | nc 127.0.0.1 6000      # STATS|0:UP:12:340;1:UP:10:200;2:UP:9:150
+printf 'SHUTDOWN\n' | nc 127.0.0.1 6001   # tắt server #0 (chỉ nhận từ localhost)
+```
+
+Tắt 1 server: client tự chuyển sang server dự phòng, Registry báo `DOWN` sau ~9 giây. Bật lại server đó bằng đúng lệnh cũ: nó tự lấy lại dữ liệu (kể cả các key bị sửa/xóa lúc nó chết) rồi mới nhận client.
 
 Thử nhanh bằng telnet (`telnet 127.0.0.1 5001`) hoặc netcat:
 
