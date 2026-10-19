@@ -4,6 +4,7 @@ import com.nhom05.cache.common.HashUtil;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.server.KeyValueStore;
+import com.nhom05.cache.server.Replicator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -35,6 +36,7 @@ import java.util.logging.Logger;
  * REPLICATE|DELETE|key|timestamp
  * Backup tra ve "OK" hoac "ERROR|E001|mo ta" neu ban tin sai.
  * Dong bo: SYNC -> danh sach REPLICATE|PUT... -> END.
+ * Tat server (nut "Sap node" cua GUI, #16): SHUTDOWN -> OK roi dung, chi nhan tu localhost.
  *
  * Phia gui: chay tren thread pool rieng, khong bao gio chan thread tra loi
  * client,
@@ -42,7 +44,7 @@ import java.util.logging.Logger;
  * Phia nhan: ServerSocket lang nghe, moi lenh goi apply(line) cap nhat
  * KeyValueStore.
  */
-public final class ReplicationHandler implements AutoCloseable {
+public final class ReplicationHandler implements Replicator, AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(ReplicationHandler.class.getName());
 
@@ -50,6 +52,7 @@ public final class ReplicationHandler implements AutoCloseable {
     private static final String ERR_FORMAT = "ERROR|E001|";
     private static final String SYNC = "SYNC";
     private static final String END = "END";
+    private static final String SHUTDOWN = "SHUTDOWN";
     private static final int CONNECT_TIMEOUT_MS = 1000;
     private static final int READ_TIMEOUT_MS = 2000;
     /**
@@ -72,6 +75,8 @@ public final class ReplicationHandler implements AutoCloseable {
     private final ExecutorService listenerPool;
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
+    /** Viec can lam khi nhan SHUTDOWN; null = khong cho phep tat tu xa. */
+    private volatile Runnable shutdownAction;
 
     /** @param store kho du lieu cua server nay (dung khi nhan replication) */
     public ReplicationHandler(KeyValueStore store) {
@@ -156,7 +161,7 @@ public final class ReplicationHandler implements AutoCloseable {
                 LOGGER.log(Level.WARNING, "Backup phan hoi khong phai OK: {0}", reply);
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Replication toi {0}:{1} that bai: {2}",
+            LOGGER.log(Level.WARNING, "Replication toi {0}:{1,number,#} that bai: {2}",
                     new Object[] { target.host(), target.port(), e.toString() });
         }
     }
@@ -179,7 +184,15 @@ public final class ReplicationHandler implements AutoCloseable {
         Thread acceptor = new Thread(() -> acceptLoop(ss), "repl-acceptor");
         acceptor.setDaemon(true);
         acceptor.start();
-        LOGGER.log(Level.INFO, "Replication listener lang nghe cong {0}", ss.getLocalPort());
+        LOGGER.log(Level.INFO, "Replication listener lang nghe cong {0,number,#}", ss.getLocalPort());
+    }
+
+    /**
+     * Cho phep tat server qua lenh SHUTDOWN tren kenh replication (chi tu localhost).
+     * action chay tren thread rieng sau khi da tra OK.
+     */
+    public void setShutdownAction(Runnable action) {
+        this.shutdownAction = action;
     }
 
     /** Cong dang lang nghe, -1 neu chua mo. */
@@ -215,12 +228,32 @@ public final class ReplicationHandler implements AutoCloseable {
                     handleSync(out);
                     continue;
                 }
+                if (SHUTDOWN.equalsIgnoreCase(line.strip())) {
+                    handleShutdown(s, out);
+                    return;
+                }
                 out.print(apply(line) + "\n");
                 out.flush();
             }
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Loi xu ly ket noi replication: {0}", e.toString());
         }
+    }
+
+    private void handleShutdown(Socket s, PrintWriter out) {
+        Runnable action = shutdownAction;
+        if (action == null || !s.getInetAddress().isLoopbackAddress()) {
+            LOGGER.warning("Tu choi SHUTDOWN tu " + s.getInetAddress().getHostAddress());
+            out.print(ERR_FORMAT + "SHUTDOWN chi duoc phep tu localhost\n");
+            out.flush();
+            return;
+        }
+        LOGGER.warning("Nhan SHUTDOWN tu localhost, dung server");
+        out.print(OK + "\n");
+        out.flush();
+        // Thread rieng: action thuong dong ca listener nay (close() cho thread pool dung)
+        Thread t = new Thread(action, "repl-shutdown");
+        t.start();
     }
 
     void handleSync(PrintWriter out) {
@@ -303,7 +336,7 @@ public final class ReplicationHandler implements AutoCloseable {
             }
             return count;
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Khong the sync tu {0}:{1}: {2}",
+            LOGGER.log(Level.WARNING, "Khong the sync tu {0}:{1,number,#}: {2}",
                     new Object[]{host, replicationPort, e.toString()});
             return -1;
         }
@@ -352,7 +385,7 @@ public final class ReplicationHandler implements AutoCloseable {
             }
         }
 
-        LOGGER.log(Level.INFO, "Server #{0} recover hoan tat: {1} key duoc nap",
+        LOGGER.log(Level.INFO, "Server #{0} recover hoan tat: {1,number,#} key duoc nap",
                 new Object[]{i, totalRecovered});
         return totalRecovered;
     }

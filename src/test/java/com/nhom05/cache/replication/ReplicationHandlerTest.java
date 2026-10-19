@@ -318,4 +318,29 @@ class ReplicationHandlerTest {
         int recovered = primary.recover(config);
         assertEquals(0, recovered, "Khi cac peer chua bat, recover phai an toan tra ve 0");
     }
+
+    private String sendLine(int port, String line) throws Exception {
+        try (Socket s = new Socket("127.0.0.1", port)) {
+            s.setSoTimeout(2000);
+            PrintWriter out = new PrintWriter(s.getOutputStream(), true, StandardCharsets.UTF_8);
+            BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+            out.println(line);
+            return in.readLine();
+        }
+    }
+
+    @Test
+    void shutdownTuLocalhostTraOkRoiChayAction() throws Exception {
+        CountDownLatch stopped = new CountDownLatch(1);
+        backup.setShutdownAction(stopped::countDown);
+        assertEquals("OK", sendLine(backup.listenerPort(), "SHUTDOWN"));
+        assertTrue(stopped.await(2, TimeUnit.SECONDS), "action phai duoc goi sau khi tra OK");
+    }
+
+    @Test
+    void shutdownKhiChuaChoPhepBiTuChoi() throws Exception {
+        assertTrue(sendLine(backup.listenerPort(), "SHUTDOWN").startsWith("ERROR|E001|"));
+        // listener van hoat dong binh thuong
+        assertEquals("OK", sendLine(backup.listenerPort(), "REPLICATE|PUT|k|v|1"));
+    }
 }
