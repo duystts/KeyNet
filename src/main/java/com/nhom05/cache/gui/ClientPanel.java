@@ -450,7 +450,7 @@ public class ClientPanel extends JPanel {
         ServerConfig.ServerAddress replicaAddr = cacheClient.router().server(replica);
 
         String text = String.format(
-                "Định tuyến: Key \"%s\"  ➔  Server chính: #%d (%s:%d)  |  Server dự phòng: #%d (%s:%d)  [|hash| mod %d = %d]",
+                "Định tuyến: Key \"%s\"  ->  Server chính: #%d (%s:%d)  |  Server dự phòng: #%d (%s:%d)  [|hash| mod %d = %d]",
                 key, primary, primaryAddr.host(), primaryAddr.port(),
                 replica, replicaAddr.host(), replicaAddr.port(),
                 n, primary
