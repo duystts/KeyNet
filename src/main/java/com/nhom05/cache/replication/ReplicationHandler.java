@@ -136,7 +136,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
                 LOGGER.log(Level.WARNING, "Backup phan hoi khong phai OK: {0}", reply);
             }
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Replication toi {0}:{1} that bai: {2}",
+            LOGGER.log(Level.WARNING, "Replication toi {0}:{1,number,#} that bai: {2}",
                     new Object[] { target.host(), target.port(), e.toString() });
         }
     }
@@ -159,7 +159,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
         Thread acceptor = new Thread(() -> acceptLoop(ss), "repl-acceptor");
         acceptor.setDaemon(true);
         acceptor.start();
-        LOGGER.log(Level.INFO, "Replication listener lang nghe cong {0}", ss.getLocalPort());
+        LOGGER.log(Level.INFO, "Replication listener lang nghe cong {0,number,#}", ss.getLocalPort());
     }
 
     /**
@@ -311,7 +311,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
             }
             return count;
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Khong the sync tu {0}:{1}: {2}",
+            LOGGER.log(Level.WARNING, "Khong the sync tu {0}:{1,number,#}: {2}",
                     new Object[]{host, replicationPort, e.toString()});
             return -1;
         }
@@ -360,7 +360,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
             }
         }
 
-        LOGGER.log(Level.INFO, "Server #{0} recover hoan tat: {1} key duoc nap",
+        LOGGER.log(Level.INFO, "Server #{0} recover hoan tat: {1,number,#} key duoc nap",
                 new Object[]{i, totalRecovered});
         return totalRecovered;
     }
