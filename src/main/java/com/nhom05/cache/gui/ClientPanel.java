@@ -122,15 +122,15 @@ public class ClientPanel extends JPanel {
 
         JLabel subLabel = new JLabel("Thực hiện các thao tác PUT / GET / DELETE theo mã băm và theo dõi chuyển vùng dự phòng (Failover)");
         subLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        subLabel.setForeground(new Color(117, 117, 117));
+        subLabel.setForeground(new Color(66, 66, 66));
 
         titleBox.add(titleLabel);
         titleBox.add(subLabel);
         header.add(titleBox, BorderLayout.WEST);
 
         lblFeedbackStatus = new JLabel("Sẵn sàng thao tác", JLabel.RIGHT);
-        lblFeedbackStatus.setFont(new Font("Segoe UI", Font.ITALIC, 12));
-        lblFeedbackStatus.setForeground(new Color(117, 117, 117));
+        lblFeedbackStatus.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblFeedbackStatus.setForeground(new Color(46, 125, 50));
         header.add(lblFeedbackStatus, BorderLayout.EAST);
 
         return header;
@@ -204,7 +204,7 @@ public class ClientPanel extends JPanel {
         btnGet = createActionButton("GET (Đọc)", new Color(21, 101, 192), e -> handleGet());
         btnDelete = createActionButton("DELETE (Xóa)", new Color(198, 40, 40), e -> handleDelete());
         btnInfo = createActionButton("INFO (Kiểm tra Hash)", new Color(106, 27, 154), e -> handleInfo());
-        btnClear = createActionButton("Xóa Form", new Color(117, 117, 117), e -> handleClearForm());
+        btnClear = createActionButton("Xóa Form", new Color(97, 97, 97), e -> handleClearForm());
 
         btnPanel.add(btnPut);
         btnPanel.add(btnGet);
@@ -218,15 +218,34 @@ public class ClientPanel extends JPanel {
     }
 
     private JButton createActionButton(String text, Color bg, java.awt.event.ActionListener al) {
-        JButton btn = new JButton(text);
+        JButton btn = new JButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                if (getModel().isPressed()) {
+                    g2.setColor(bg.darker());
+                } else if (getModel().isRollover()) {
+                    g2.setColor(bg.brighter());
+                } else if (!isEnabled()) {
+                    g2.setColor(new Color(189, 189, 189));
+                } else {
+                    g2.setColor(bg);
+                }
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
         btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btn.setBackground(bg);
         btn.setForeground(Color.WHITE);
+        btn.setContentAreaFilled(false);
         btn.setFocusPainted(false);
-        btn.setBorder(new CompoundBorder(
-                new LineBorder(bg.darker(), 1, true),
-                new EmptyBorder(6, 12, 6, 12)
-        ));
+        btn.setBorderPainted(false);
+        btn.setOpaque(false);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(7, 14, 7, 14));
         btn.addActionListener(al);
         return btn;
     }
@@ -241,8 +260,8 @@ public class ClientPanel extends JPanel {
 
         // Hang 1: Dinh tuyen Hashing truc tiep
         lblHashRouteInfo = new JLabel("Nhập Key để xem định tuyến Server chính và Server dự phòng...");
-        lblHashRouteInfo.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        lblHashRouteInfo.setForeground(new Color(66, 66, 66));
+        lblHashRouteInfo.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblHashRouteInfo.setForeground(new Color(21, 101, 192));
         card.add(lblHashRouteInfo, BorderLayout.NORTH);
 
         // Hang 2: Ket qua phan hoi gan nhat & Failover Badge
@@ -251,7 +270,7 @@ public class ClientPanel extends JPanel {
 
         lblLastResponseStatus = new JLabel("Chưa có lệnh nào được thực hiện.");
         lblLastResponseStatus.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        lblLastResponseStatus.setForeground(new Color(97, 97, 97));
+        lblLastResponseStatus.setForeground(new Color(33, 33, 33));
         resultRow.add(lblLastResponseStatus, BorderLayout.WEST);
 
         JPanel rightDetails = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -278,10 +297,10 @@ public class ClientPanel extends JPanel {
         tabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 12));
 
         // Tab 1: Key Explorer
-        tabbedPane.addTab("📁 Key Explorer (Các Key Đã Ghi)", createKeyExplorerPanel());
+        tabbedPane.addTab("Key Explorer (Các Key Đã Ghi)", createKeyExplorerPanel());
 
         // Tab 2: Nhat ky lenh
-        tabbedPane.addTab("📜 Nhật Ký Lệnh (Command History)", createCommandLogPanel());
+        tabbedPane.addTab("Nhật Ký Lệnh (Command History)", createCommandLogPanel());
 
         return tabbedPane;
     }
@@ -335,9 +354,9 @@ public class ClientPanel extends JPanel {
         // Toolbar o duoi: Ho tro thao tac nhanh
         JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         bottomBar.setOpaque(false);
-        JLabel hintLabel = new JLabel("💡 Mẹo: Nhấp chuột vào một dòng để tự động điền Key/Value lên form thao tác.");
-        hintLabel.setFont(new Font("Segoe UI", Font.ITALIC, 11));
-        hintLabel.setForeground(Color.GRAY);
+        JLabel hintLabel = new JLabel("Ghi chú: Nhấp chuột vào một dòng để tự động điền Key/Value lên form thao tác.");
+        hintLabel.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        hintLabel.setForeground(new Color(66, 66, 66));
         bottomBar.add(hintLabel);
 
         panel.add(bottomBar, BorderLayout.SOUTH);
@@ -589,7 +608,7 @@ public class ClientPanel extends JPanel {
         }
 
         if (failedOver) {
-            lblFailoverBadge.setText(" ⚠ ĐÃ FAILOVER ");
+            lblFailoverBadge.setText(" [DỰ PHÒNG - FAILOVER] ");
             lblFailoverBadge.setBackground(COLOR_WARN_BG);
             lblFailoverBadge.setForeground(COLOR_WARN_TEXT);
             lblFailoverBadge.setBorder(new CompoundBorder(

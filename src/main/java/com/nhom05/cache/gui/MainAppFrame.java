@@ -32,8 +32,8 @@ public class MainAppFrame extends JFrame {
         JTabbedPane rootTabbedPane = new JTabbedPane();
         rootTabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 13));
 
-        rootTabbedPane.addTab("📊 Giám Sát Cụm (Dashboard #14)", dashboardPanel);
-        rootTabbedPane.addTab("⚡ Thao Tác Cache & Key Explorer (#15)", clientPanel);
+        rootTabbedPane.addTab("Giám Sát Cụm (Dashboard #14)", dashboardPanel);
+        rootTabbedPane.addTab("Thao Tác Cache & Key Explorer (#15)", clientPanel);
 
         setContentPane(rootTabbedPane);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
