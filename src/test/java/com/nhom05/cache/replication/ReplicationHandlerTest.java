@@ -12,9 +12,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
@@ -356,8 +356,8 @@ class ReplicationHandlerTest {
     void testRoutingLogicWhenOriginIsNotPrimary() throws Exception {
         // Mô phỏng cụm 3 server: S0, S1, S2
         // Handler đang test đóng vai trò Server #1 (serverIndex = 1)
-        List<String> receivedOnServer0 = Collections.synchronizedList(new ArrayList<>());
-        List<String> receivedOnServer2 = Collections.synchronizedList(new ArrayList<>());
+        List<String> receivedOnServer0 = new CopyOnWriteArrayList<>();
+        List<String> receivedOnServer2 = new CopyOnWriteArrayList<>();
 
         try (ServerSocket fakeS0 = new ServerSocket(0);
              ServerSocket fakeS2 = new ServerSocket(0)) {

@@ -469,7 +469,6 @@ class KeyValueStoreTest {
         assertNull(store.get("k_expired"), "Ban sao het han khong duoc luu vao kho");
         assertEquals(1, store.droppedExpiredReplicasCount(),
                 "Metric droppedExpiredReplicas phai duoc ghi nhan");
-        assertEquals(1, store.getDroppedExpiredReplicas());
     }
 
     @Test

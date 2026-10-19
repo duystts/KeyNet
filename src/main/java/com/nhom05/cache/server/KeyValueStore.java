@@ -78,12 +78,9 @@ public final class KeyValueStore implements AutoCloseable {
         this(ttlSeconds, maxEntries, System::currentTimeMillis, true);
     }
 
-    /** Cho test truyen dong ho gia ma khong can khoi dong background sweeper. */
-    public KeyValueStore(long ttlSeconds, int maxEntries, LongSupplier clock) {
-        this(ttlSeconds, maxEntries, clock, false);
-    }
-
-    /** Cho test truyen dong ho gia de kiem tra TTL ma khong phai sleep. */
+    /**
+     * Chỉ dùng cho test: truyền đồng hồ giả để kiểm tra TTL mà không phải sleep.
+     */
     public KeyValueStore(long ttlSeconds, int maxEntries, LongSupplier clock, boolean startSweeper) {
         if (ttlSeconds <= 0 || maxEntries <= 0) {
             throw new IllegalArgumentException("ttlSeconds va maxEntries phai > 0");
@@ -394,10 +391,6 @@ public final class KeyValueStore implements AutoCloseable {
 
     /** So luong ban sao replication/recover bi bo qua do da het han TTL (metric count_dropped_expired_replicas). */
     public long droppedExpiredReplicasCount() {
-        return droppedExpiredReplicas.get();
-    }
-
-    public long getDroppedExpiredReplicas() {
         return droppedExpiredReplicas.get();
     }
 
