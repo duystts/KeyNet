@@ -3,7 +3,6 @@ package com.nhom05.cache.server;
 import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig;
-import com.nhom05.cache.registry.HeartbeatSender;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -180,35 +179,15 @@ public final class CacheServer {
             return;
         }
 
-        ServerConfig.ServerAddress self = config.self();
-        CacheServer server = new CacheServer(self.port(), config.ttlSeconds(), config.maxEntries());
-
-        HeartbeatSender heartbeatSender = null;
-        if (config.registry() != null) {
-            ServerConfig.ServerAddress reg = config.registry();
-            heartbeatSender = new HeartbeatSender(
-                    reg.host(), reg.port(),
-                    config.serverIndex(),
-                    self.host(), self.port(),
-                    server::keyCount,
-                    server::requestCount
-            );
-            heartbeatSender.start();
-        }
-        final HeartbeatSender finalHeartbeat = heartbeatSender;
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (finalHeartbeat != null) {
-                finalHeartbeat.close();
-            }
-            server.shutdown();
-        }, "cache-shutdown"));
-
-        LOGGER.info("KeyNet CacheServer #" + config.serverIndex() + " - port " + self.port()
-                + ", ttl=" + config.ttlSeconds() + "s, maxEntries=" + config.maxEntries());
+        CacheNode node = new CacheNode(config);
+        // Nut "Sap node" cua GUI: dung han nhu mat nguon (halt bo qua shutdown hook),
+        // bat lai thi server tu lay lai du lieu qua recover
+        node.setShutdownAction(() -> Runtime.getRuntime().halt(0));
+        Runtime.getRuntime().addShutdownHook(new Thread(node::close, "cache-shutdown"));
         try {
-            server.start();
+            node.start();
         } catch (IOException e) {
-            LOGGER.severe("Khong mo duoc port " + self.port() + " (dang bi chiem?): " + e.getMessage());
+            LOGGER.severe(e.getMessage() + " (port dang bi chiem?)");
             System.exit(1);
         }
     }
