@@ -65,13 +65,28 @@ public class DashboardPanel extends JPanel {
     private JButton refreshButton;
     private JLabel statusFeedbackLabel;
 
+    // Issue #16: Nut tat / bat server that (Node Control)
+    private final String configPath;
+    private JLabel lblSelectedNodeInfo;
+    private JButton btnCrashNode;
+    private JButton btnRestartNode;
+
     // Theo doi trang thai truoc do de ghi log su kien
     private final Map<Integer, String> previousNodeStatuses = new HashMap<>();
     private Boolean previousRegistryConnected = null;
 
     public DashboardPanel(ServerConfig config, RegistryClient registryClient) {
+        this(config, registryClient, "config/config.properties", true);
+    }
+
+    public DashboardPanel(ServerConfig config, RegistryClient registryClient, String configPath) {
+        this(config, registryClient, configPath, true);
+    }
+
+    public DashboardPanel(ServerConfig config, RegistryClient registryClient, String configPath, boolean autoStartRefresh) {
         this.config = config;
         this.registryClient = registryClient;
+        this.configPath = (configPath != null && !configPath.isBlank()) ? configPath : "config/config.properties";
 
         setLayout(new BorderLayout(12, 12));
         setBackground(BG_MAIN);
@@ -81,10 +96,11 @@ public class DashboardPanel extends JPanel {
 
         // Timer dinh ky 2 giay, chay tren EDT de goi SwingWorker
         this.refreshTimer = new Timer(DEFAULT_REFRESH_INTERVAL_MS, e -> refresh());
-        this.refreshTimer.start();
-
-        // Nap du lieu lan dau
-        refresh();
+        if (autoStartRefresh) {
+            this.refreshTimer.start();
+            // Nap du lieu lan dau
+            refresh();
+        }
     }
 
     private void initUI() {
@@ -278,7 +294,210 @@ public class DashboardPanel extends JPanel {
         scrollPane.setBorder(new LineBorder(COLOR_BORDER, 1));
 
         panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(createNodeControlToolbar(), BorderLayout.SOUTH);
         return panel;
+    }
+
+    private JPanel createNodeControlToolbar() {
+        JPanel bar = new JPanel(new BorderLayout(8, 0));
+        bar.setOpaque(false);
+        bar.setBorder(new EmptyBorder(6, 4, 4, 4));
+
+        lblSelectedNodeInfo = new JLabel("Chọn một Server trong bảng để thực hiện thao tác tắt / bật node.");
+        lblSelectedNodeInfo.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        lblSelectedNodeInfo.setForeground(new Color(66, 66, 66));
+        bar.add(lblSelectedNodeInfo, BorderLayout.WEST);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        btnPanel.setOpaque(false);
+
+        btnCrashNode = createStyledActionButton("Sập Node Được Chọn", new Color(198, 40, 40), e -> handleCrashNode());
+        btnRestartNode = createStyledActionButton("Bật Lại Node Được Chọn", new Color(46, 125, 50), e -> handleRestartNode());
+
+        btnPanel.add(btnCrashNode);
+        btnPanel.add(btnRestartNode);
+        bar.add(btnPanel, BorderLayout.EAST);
+
+        // Lang nghe chon dong trong serverTable
+        serverTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int row = serverTable.getSelectedRow();
+                if (row >= 0 && row < tableModel.getRowCount()) {
+                    NodeDisplayInfo node = tableModel.getNodeAt(row);
+                    if (node != null) {
+                        lblSelectedNodeInfo.setText(String.format(
+                                "Đang chọn: Server #%d (%s:%d | Port Replication: %d) - Trạng thái: %s",
+                                node.index(), node.host(), node.clientPort(), node.replicationPort(), node.status()
+                        ));
+                    }
+                } else {
+                    lblSelectedNodeInfo.setText("Chọn một Server trong bảng để thực hiện thao tác tắt / bật node.");
+                }
+            }
+        });
+
+        return bar;
+    }
+
+    private JButton createStyledActionButton(String text, Color bg, java.awt.event.ActionListener al) {
+        JButton btn = new JButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                if (getModel().isPressed()) {
+                    g2.setColor(bg.darker());
+                } else if (getModel().isRollover()) {
+                    g2.setColor(bg.brighter());
+                } else if (!isEnabled()) {
+                    g2.setColor(new Color(189, 189, 189));
+                } else {
+                    g2.setColor(bg);
+                }
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        btn.setForeground(Color.WHITE);
+        btn.setContentAreaFilled(false);
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setOpaque(false);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(7, 14, 7, 14));
+        btn.addActionListener(al);
+        return btn;
+    }
+
+    private void handleCrashNode() {
+        int row = serverTable.getSelectedRow();
+        if (row < 0 || row >= tableModel.getRowCount()) {
+            JOptionPane.showMessageDialog(this, "Vui lòng nhấp chọn một Server trong bảng trước!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        NodeDisplayInfo node = tableModel.getNodeAt(row);
+        if (node == null) return;
+
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Bạn có chắc chắn muốn làm SẬP Server #" + node.index() + " (" + node.host() + ":" + node.clientPort() + ") không?\n"
+                        + "Lệnh SHUTDOWN sẽ được gửi tới port replication " + node.replicationPort() + " để tắt tiến trình thật.",
+                "Xác nhận sập node",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        btnCrashNode.setEnabled(false);
+        btnRestartNode.setEnabled(false);
+        statusFeedbackLabel.setText("Đang gửi lệnh SHUTDOWN tới Server #" + node.index() + "...");
+        appendLog("[THAO TÁC] Gửi lệnh SHUTDOWN tới Server #" + node.index() + " (Port " + node.replicationPort() + ")...");
+
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                return NodeProcessManager.shutdownNode(node.host(), node.replicationPort());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    boolean ok = get();
+                    if (ok) {
+                        appendLog("[SẬP NODE THÀNH CÔNG] Server #" + node.index() + " đã xác nhận lệnh SHUTDOWN và dừng tiến trình!");
+                        statusFeedbackLabel.setText("Đã sập Server #" + node.index());
+                    } else {
+                        appendLog("[SẬP NODE THẤT BẠI] Không thể gửi SHUTDOWN tới Server #" + node.index() + " (Port " + node.replicationPort() + "). Có thể server đã dừng từ trước.");
+                        statusFeedbackLabel.setText("Không thể kết nối port replication của Server #" + node.index());
+                    }
+                } catch (Exception e) {
+                    appendLog("[SẬP NODE LỖI] " + e.getMessage());
+                } finally {
+                    btnCrashNode.setEnabled(true);
+                    btnRestartNode.setEnabled(true);
+                    refresh();
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void handleRestartNode() {
+        int row = serverTable.getSelectedRow();
+        if (row < 0 || row >= tableModel.getRowCount()) {
+            JOptionPane.showMessageDialog(this, "Vui lòng nhấp chọn một Server trong bảng trước!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        NodeDisplayInfo node = tableModel.getNodeAt(row);
+        if (node == null) return;
+
+        // Chan khi node dang UP de tranh tao tien trinh loi Address already in use
+        if (node.isUp()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Server #" + node.index() + " hiện đang hoạt động (UP). Không thể bật lại node đang chạy!",
+                    "Cảnh báo",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            appendLog("[BẬT LẠI BỊ CHẶN] Server #" + node.index() + " hiện đang hoạt động (UP). Hãy sập node trước nếu muốn khởi động lại.");
+            return;
+        }
+
+        btnCrashNode.setEnabled(false);
+        btnRestartNode.setEnabled(false);
+        statusFeedbackLabel.setText("Đang khởi động lại Server #" + node.index() + "...");
+        appendLog("[THAO TÁC] Khởi động lại Server #" + node.index() + " qua ProcessBuilder...");
+
+        SwingWorker<Process, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Process doInBackground() throws Exception {
+                Process p = NodeProcessManager.startNode(node.index(), configPath);
+                // Cho khoang 1s de kiem tra tien trinh co chet som hay khong
+                Thread.sleep(1000);
+                if (!p.isAlive()) {
+                    String lastLog = NodeProcessManager.readLastLogLine(node.index());
+                    String msg = "Tiến trình dừng ngay sau khi bật (exitCode: " + p.exitValue() + ").";
+                    if (lastLog != null && !lastLog.isBlank()) {
+                        msg += " Dòng cuối log: " + lastLog;
+                    }
+                    throw new java.io.IOException(msg);
+                }
+                return p;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    Process p = get();
+                    appendLog("[BẬT LẠI NODE THÀNH CÔNG] Đã khởi chạy Server #" + node.index() + " (PID: " + p.pid() + ", log: logs/server-" + node.index() + ".log). Server đang tự SYNC dữ liệu...");
+                    statusFeedbackLabel.setText("Đã khởi chạy Server #" + node.index());
+                    Timer t = new Timer(1500, e -> refresh());
+                    t.setRepeats(false);
+                    t.start();
+                } catch (Exception e) {
+                    Throwable cause = (e.getCause() != null) ? e.getCause() : e;
+                    appendLog("[BẬT LẠI THẤT BẠI] " + cause.getMessage());
+                    statusFeedbackLabel.setText("Lỗi khởi chạy: " + cause.getMessage());
+                    JOptionPane.showMessageDialog(
+                            DashboardPanel.this,
+                            "Không thể khởi chạy Server #" + node.index() + ":\n" + cause.getMessage(),
+                            "Lỗi khởi chạy",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                } finally {
+                    btnCrashNode.setEnabled(true);
+                    btnRestartNode.setEnabled(true);
+                }
+            }
+        };
+        worker.execute();
     }
 
     private JPanel createLogSection() {
@@ -442,8 +661,32 @@ public class DashboardPanel extends JPanel {
         totalRequestsCardValue.setText(String.format("%,d", model.totalRequests()));
         lastUpdatedCardValue.setText(model.lastUpdatedTime());
 
-        // 3. Cap nhat Bang Server
+        // 3. Cap nhat Bang Server va bao toan lua chon dong hien tai
+        int selectedRow = serverTable.getSelectedRow();
+        int selectedNodeIndex = -1;
+        if (selectedRow >= 0 && selectedRow < tableModel.getRowCount()) {
+            NodeDisplayInfo selectedNode = tableModel.getNodeAt(selectedRow);
+            if (selectedNode != null) {
+                selectedNodeIndex = selectedNode.index();
+            }
+        }
+
         tableModel.setNodes(model.nodes());
+
+        // Phuc hoi lai selection cho node dang duoc chon
+        if (selectedNodeIndex >= 0) {
+            for (int r = 0; r < tableModel.getRowCount(); r++) {
+                NodeDisplayInfo n = tableModel.getNodeAt(r);
+                if (n != null && n.index() == selectedNodeIndex) {
+                    serverTable.setRowSelectionInterval(r, r);
+                    lblSelectedNodeInfo.setText(String.format(
+                            "Đang chọn: Server #%d (%s:%d | Port Replication: %d) - Trạng thái: %s",
+                            n.index(), n.host(), n.clientPort(), n.replicationPort(), n.status()
+                    ));
+                    break;
+                }
+            }
+        }
 
         // Ghi log su kien chuyen trang thai cua tung node
         for (NodeDisplayInfo node : model.nodes()) {
@@ -488,8 +731,20 @@ public class DashboardPanel extends JPanel {
         private List<NodeDisplayInfo> nodes = List.of();
 
         public void setNodes(List<NodeDisplayInfo> newNodes) {
+            int oldSize = this.nodes.size();
             this.nodes = (newNodes != null) ? List.copyOf(newNodes) : List.of();
-            fireTableDataChanged();
+            if (oldSize == this.nodes.size() && oldSize > 0) {
+                fireTableRowsUpdated(0, oldSize - 1);
+            } else {
+                fireTableDataChanged();
+            }
+        }
+
+        public NodeDisplayInfo getNodeAt(int row) {
+            if (row >= 0 && row < nodes.size()) {
+                return nodes.get(row);
+            }
+            return null;
         }
 
         @Override
@@ -526,6 +781,25 @@ public class DashboardPanel extends JPanel {
     }
 
     // =========================================================================
+    // Getters ho tro kiem thu giao dien
+    // =========================================================================
+    public JButton btnCrashNode() {
+        return btnCrashNode;
+    }
+
+    public JButton btnRestartNode() {
+        return btnRestartNode;
+    }
+
+    public JTable serverTable() {
+        return serverTable;
+    }
+
+    public JLabel lblSelectedNodeInfo() {
+        return lblSelectedNodeInfo;
+    }
+
+    // =========================================================================
     // Renderer ve status dang Pill / Badge
     // =========================================================================
     private static class StatusBadgeRenderer extends DefaultTableCellRenderer {
@@ -554,7 +828,7 @@ public class DashboardPanel extends JPanel {
             } else {
                 label.setBackground(COLOR_WARN_BG);
                 label.setForeground(COLOR_WARN_TEXT);
-                label.setText("⚠ " + status);
+                label.setText("[!] " + status);
             }
 
             if (isSelected) {

@@ -18,9 +18,13 @@ public class DashboardFrame extends JFrame {
     private final DashboardPanel dashboardPanel;
 
     public DashboardFrame(ServerConfig config, RegistryClient registryClient) {
+        this(config, registryClient, "config/config.properties");
+    }
+
+    public DashboardFrame(ServerConfig config, RegistryClient registryClient, String configPath) {
         super("KeyNet — Cluster Dashboard (Nhóm 05)");
 
-        this.dashboardPanel = new DashboardPanel(config, registryClient);
+        this.dashboardPanel = new DashboardPanel(config, registryClient, configPath);
         setContentPane(dashboardPanel);
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -69,8 +73,9 @@ public class DashboardFrame extends JFrame {
         RegistryClient registryClient = new RegistryClient(config.registry().host(), config.registry().port());
 
         final ServerConfig finalConfig = config;
+        final String finalConfigPath = configPath;
         SwingUtilities.invokeLater(() -> {
-            DashboardFrame frame = new DashboardFrame(finalConfig, registryClient);
+            DashboardFrame frame = new DashboardFrame(finalConfig, registryClient, finalConfigPath);
             frame.setVisible(true);
         });
     }
