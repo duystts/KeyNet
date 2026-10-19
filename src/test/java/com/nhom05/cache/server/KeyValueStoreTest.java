@@ -265,6 +265,7 @@ class KeyValueStoreTest {
 
     @Test
     void putReplicatedSaiThuTuTimestampNhoHonBiBoQua() {
+        now.set(1000);
         store = storeWithFakeClock(60, 100);
 
         // Ban tin timestamp 3000 den truoc
@@ -289,6 +290,7 @@ class KeyValueStoreTest {
 
     @Test
     void deleteRoiPutCuHonDenTreBiChanBoiTombstone() {
+        now.set(1000);
         store = storeWithFakeClock(60, 100);
 
         // Ghi ban ghi luc 1000
@@ -315,6 +317,7 @@ class KeyValueStoreTest {
 
     @Test
     void deleteCuHonBanDangCoBiBoQua() {
+        now.set(1000);
         store = storeWithFakeClock(60, 100);
 
         // Ban ghi moi hon co timestamp 3000
@@ -349,6 +352,7 @@ class KeyValueStoreTest {
 
     @Test
     void tombstoneTuDongDonDepTheoChuKyTTL() {
+        now.set(1000);
         store = storeWithFakeClock(60, 100);
 
         // Xoa key de tao tombstone
@@ -365,12 +369,13 @@ class KeyValueStoreTest {
         assertEquals(0, store.tombstoneCount(), "Tombstone phai bi don dep sau khi het han TTL");
 
         // Sau khi tombstone het han, key co the duoc ghi lai binh thuong
-        assertTrue(store.putReplicated("k", "v_new", 2500));
+        assertTrue(store.putReplicated("k", "v_new", now.get()));
         assertEquals("v_new", store.get("k"));
     }
 
     @Test
     void snapshotChuaCacKeyConHan() {
+        now.set(1000);
         store = storeWithFakeClock(60, 100);
         store.putReplicated("k1", "v1", 1000);
         store.putReplicated("k2", "v2", 2000);
@@ -378,20 +383,20 @@ class KeyValueStoreTest {
         var list = store.snapshot();
         assertEquals(2, list.size());
 
-        // Lam k1 het han
-        now.addAndGet(60_000);
-        store.putReplicated("k3", "v3", 3000); // k3 vua ghi, k1 va k2 da het han
+        // Lam k1 va k2 het han: k1 expire o 61_000, k2 expire o 62_000
+        now.set(62_000);
+        store.putReplicated("k3", "v3", 62_000); // k3 vua ghi, k1 va k2 da het han
 
         var list2 = store.snapshot();
         assertEquals(1, list2.size());
         assertEquals("k3", list2.get(0).key());
         assertEquals("v3", list2.get(0).value());
-        assertEquals(3000, list2.get(0).timestamp());
+        assertEquals(62_000, list2.get(0).timestamp());
     }
 
     @Test
     void concurrencyAtomicLWWVaTombstone() throws InterruptedException {
-        store = new KeyValueStore(60, 1000);
+        store = new KeyValueStore(60, 1000, () -> 0L, false);
         int threads = 10;
         int operationsPerThread = 200;
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -433,5 +438,55 @@ class KeyValueStoreTest {
             assertEquals("val_" + maxTs, store.get("concurrent_key"), "Thao tac co timestamp lon nhat la put thi ket qua phai khop");
             assertEquals(maxTs, store.getTimestamp("concurrent_key"));
         }
+    }
+
+    // ------------------------------------------------------------------ TTL replication & recover (Issue #46)
+
+    @Test
+    void putReplicatedTinhTtlTuWriteTimestampGocVaBoQuaNeuQuaHan() {
+        // write_ts = 100_000, ttl = 60s -> expireAt = 160_000
+        long writeTs = 100_000L;
+        now.set(150_000L); // den tre 50 giay sau khi ghi
+        store = storeWithFakeClock(60, 100);
+
+        // 1. Nhan tai t = 150_000 (truoc expireAt 160_000) -> duoc chap nhan va luu vao kho
+        assertTrue(store.putReplicated("k", "v", writeTs));
+        assertEquals("v", store.get("k"));
+        assertEquals(writeTs, store.getTimestamp("k"));
+
+        // Key van ton tai o t = 159_999 (chua het han tinh tu writeTs goc)
+        now.set(159_999L);
+        assertEquals("v", store.get("k"));
+
+        // Key phai het han o t = 160_000 (khong duoc gia han toi 150_000 + 60_000 = 210_000)
+        now.set(160_000L);
+        assertNull(store.get("k"), "Key phai het han tai writeTs + ttlSeconds tren moi server");
+
+        // 2. Ban sao den sau khi da het han (receiveTime = 160_001 > expireAt 160_000) -> phai bi drop
+        now.set(160_001L);
+        assertFalse(store.putReplicated("k_expired", "v_expired", writeTs),
+                "Ban sao da het han tai thoi diem nhan phai bi bo qua");
+        assertNull(store.get("k_expired"), "Ban sao het han khong duoc luu vao kho");
+        assertEquals(1, store.droppedExpiredReplicasCount(),
+                "Metric droppedExpiredReplicas phai duoc ghi nhan");
+        assertEquals(1, store.getDroppedExpiredReplicas());
+    }
+
+    @Test
+    void putReplicatedFallbackKhiTimestampKhongHopLe() {
+        now.set(100_000L);
+        store = storeWithFakeClock(60, 100);
+
+        // Ban tin timestamp <= 0 fallback sang legacy (receive time + ttl)
+        assertTrue(store.putReplicated("k_legacy", "v_legacy", 0L));
+        assertEquals("v_legacy", store.get("k_legacy"));
+
+        // Key van song o 100_000 + 59_000
+        now.set(159_000L);
+        assertEquals("v_legacy", store.get("k_legacy"));
+
+        // Key het han sau 60 giay ke tu luc nhan
+        now.set(160_000L);
+        assertNull(store.get("k_legacy"));
     }
 }

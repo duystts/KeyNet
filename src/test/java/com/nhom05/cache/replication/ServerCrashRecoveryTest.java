@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.ServerSocket;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -278,5 +279,102 @@ class ServerCrashRecoveryTest {
         boolean putOlder = store0.putReplicated(key0, "stale_data", tsDel - 100);
         assertFalse(putOlder);
         assertNull(store0.get(key0));
+    }
+
+    @Test
+    void testTtlReplicationVaRecoverHetHanDungThoiDiemOriginalWrite() throws Exception {
+        int n = 3;
+        AtomicLong clusterClock = new AtomicLong(100_000L); // t = 100_000, ttl = 60s -> expire = 160_000
+
+        store0 = new KeyValueStore(60, 1000, clusterClock::get, false);
+        store1 = new KeyValueStore(60, 1000, clusterClock::get, false);
+        store2 = new KeyValueStore(60, 1000, clusterClock::get, false);
+
+        handler0 = new ReplicationHandler(store0);
+        handler1 = new ReplicationHandler(store1);
+        handler2 = new ReplicationHandler(store2);
+
+        handler0.startListener(0);
+        handler1.startListener(0);
+        handler2.startListener(0);
+
+        int repPort0 = handler0.listenerPort();
+        int repPort1 = handler1.listenerPort();
+        int repPort2 = handler2.listenerPort();
+
+        handler0.setBackup("127.0.0.1", repPort1);
+        handler1.setBackup("127.0.0.1", repPort2);
+        handler2.setBackup("127.0.0.1", repPort0);
+
+        int clientPort0 = repPort0 - ServerConfig.REPLICATION_PORT_OFFSET;
+        int clientPort1 = repPort1 - ServerConfig.REPLICATION_PORT_OFFSET;
+        int clientPort2 = repPort2 - ServerConfig.REPLICATION_PORT_OFFSET;
+
+        List<ServerConfig.ServerAddress> serverAddresses = List.of(
+                new ServerConfig.ServerAddress("127.0.0.1", clientPort0),
+                new ServerConfig.ServerAddress("127.0.0.1", clientPort1),
+                new ServerConfig.ServerAddress("127.0.0.1", clientPort2)
+        );
+
+        ServerConfig config0 = ServerConfig.of(serverAddresses, 0);
+
+        // Key0 co primary la Server 0, replica la Server 1
+        String key0 = findKeyForServer(0, n, "ttl_test_key");
+        assertEquals(0, HashUtil.computeServerIndex(key0, n));
+
+        // 1. Ghi key0 tai thoi diem t = 100_000 tren Server 0 (primary)
+        long tsWrite = store0.put(key0, "ttl_val");
+        assertEquals(100_000L, tsWrite);
+        handler0.replicatePut(key0, "ttl_val", tsWrite);
+
+        // Cho replica tren Server 1 nhan du lieu
+        assertTrue(waitFor(() -> "ttl_val".equals(store1.get(key0)), 3000));
+        assertEquals("ttl_val", store0.get(key0));
+
+        // 2. Tua thoi gian toi t + 50s (150_000): Server 0 bi crash
+        clusterClock.set(150_000L);
+        handler0.close();
+        store0.close();
+
+        // 3. Tai t + 55s (155_000): Server 0 khoi dong lai va recover tu replica Server 1
+        clusterClock.set(155_000L);
+        store0 = new KeyValueStore(60, 1000, clusterClock::get, false);
+        handler0 = new ReplicationHandler(store0);
+        handler0.startListener(repPort0);
+        handler0.setBackup("127.0.0.1", repPort1);
+
+        int recoveredCount = handler0.recover(config0);
+        assertEquals(1, recoveredCount, "Key0 phai duoc recover thanh cong vi chua het han (155s < 160s)");
+        assertEquals("ttl_val", store0.get(key0));
+        assertEquals("ttl_val", store1.get(key0));
+
+        // 4. Tai t + 59s (159_000): key0 van con tren ca server chinh va replica
+        clusterClock.set(159_000L);
+        assertEquals("ttl_val", store0.get(key0), "Key van ton tai tren primary o t+59s");
+        assertEquals("ttl_val", store1.get(key0), "Key van ton tai tren replica o t+59s");
+
+        // 5. Tai t + 60s (160_000): key0 phai HET HAN tren ca 2 server (tinh tu write timestamp goc, khong phai 155s + 60s = 215s)
+        clusterClock.set(160_000L);
+        assertNull(store0.get(key0), "Key0 phai het han o t+60s tren server chinh du vua recover o t+55s");
+        assertNull(store1.get(key0), "Key0 phai het han o t+60s tren replica");
+
+        // 6. Neu mot server recover sau khi key da qua han (t = 165_000):
+        // snapshot tren cac node doi tac se khong con chua key het han, recover an toan voi 0 key
+        clusterClock.set(165_000L);
+        KeyValueStore lateStore = new KeyValueStore(60, 1000, clusterClock::get, false);
+        try (ReplicationHandler lateHandler = new ReplicationHandler(lateStore)) {
+            int lateRecovered = lateHandler.recover(config0);
+            assertEquals(0, lateRecovered, "Ban ghi da qua han TTL khong duoc nap khi recover");
+            assertNull(lateStore.get(key0), "Key qua han khong duoc xuat hien trong kho moi");
+        } finally {
+            lateStore.close();
+        }
+
+        // 7. Neu ban tin replication den tre sau khi key da het han (do do tre mang) -> phai bi drop
+        assertFalse(store1.putReplicated("delayed_key", "delayed_val", 100_000L),
+                "Ban tin replication den tre sau khi da het han phai bi bo");
+        assertNull(store1.get("delayed_key"));
+        assertEquals(1, store1.droppedExpiredReplicasCount(),
+                "Metric droppedExpiredReplicas phai ghi nhan ban sao het han bi bo");
     }
 }

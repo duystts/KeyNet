@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 class ReplicationHandlerTest {
 
+    private final AtomicLong clock = new AtomicLong(0);
     private KeyValueStore primaryStore;
     private KeyValueStore backupStore;
     private ReplicationHandler backup;
@@ -30,8 +32,9 @@ class ReplicationHandlerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        primaryStore = new KeyValueStore(60, 100);
-        backupStore = new KeyValueStore(60, 100);
+        clock.set(0);
+        primaryStore = new KeyValueStore(60, 100, clock::get, false);
+        backupStore = new KeyValueStore(60, 100, clock::get, false);
         backup = new ReplicationHandler(backupStore);
         backup.startListener(0); // port 0: he dieu hanh chon cong trong
         primary = new ReplicationHandler(primaryStore);
@@ -226,7 +229,7 @@ class ReplicationHandlerTest {
 
     @Test
     void replicationVanTuanThuTtlVaLru() throws Exception {
-        try (KeyValueStore small = new KeyValueStore(60, 2);
+        try (KeyValueStore small = new KeyValueStore(60, 2, clock::get, false);
              ReplicationHandler h = new ReplicationHandler(small)) {
             h.apply("REPLICATE|PUT|a|1|1");
             h.apply("REPLICATE|PUT|b|2|2");
@@ -301,7 +304,7 @@ class ReplicationHandlerTest {
     void syncFromLocPhanVungVaNapVaoStore() throws Exception {
         backupStore.put("keep_me", "val1");
         backupStore.put("drop_me", "val2");
-        KeyValueStore freshStore = new KeyValueStore(60, 100);
+        KeyValueStore freshStore = new KeyValueStore(60, 100, clock::get, false);
         try (ReplicationHandler freshHandler = new ReplicationHandler(freshStore)) {
             int loaded = freshHandler.syncFrom("127.0.0.1", backup.listenerPort(), k -> k.startsWith("keep_"));
             assertEquals(1, loaded);
@@ -459,6 +462,7 @@ class ReplicationHandlerTest {
 
     @Test
     void testSyncIncludesTombstoneAndPreventsResurrection() throws Exception {
+        clock.set(1_000_000);
         // backupStore tao 1 key roi xoa de tao tombstone
         long putTs = backupStore.put("k_active", "val_active");
         long delTs = backupStore.nextTimestamp();
@@ -471,7 +475,7 @@ class ReplicationHandlerTest {
         assertEquals(delTs, tombstones.get(0).timestamp());
 
         // freshStore gia lap server dang phuc hoi, co ban ghi cu "stale_val"
-        KeyValueStore freshStore = new KeyValueStore(60, 100);
+        KeyValueStore freshStore = new KeyValueStore(60, 100, clock::get, false);
         freshStore.putReplicated("k_deleted", "stale_val", delTs - 50);
         assertEquals("stale_val", freshStore.get("k_deleted"));
 
