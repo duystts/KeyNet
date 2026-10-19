@@ -62,7 +62,6 @@ public final class CacheNode implements AutoCloseable {
     public void start() throws IOException {
         int index = config.serverIndex();
         if (replication != null) {
-            replication.setConfig(config);
             replication.startListener(config.replicationPort(index));
             int backup = config.backupIndex();
             replication.setBackup(config.servers().get(backup).host(), config.replicationPort(backup));

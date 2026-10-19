@@ -69,7 +69,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
     private final KeyValueStore store;
     /** null = chua co server du phong (cum 1 server) -> khong gui di dau. */
     private volatile Backup backup;
-    private volatile ServerConfig config;
+    private final ServerConfig config;
 
     private final ThreadPoolExecutor senderPool;
     private final AtomicLong droppedSends = new AtomicLong();
@@ -122,19 +122,11 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
         backup = host == null || replicationPort <= 0 ? null : new Backup(host, replicationPort);
     }
 
-    public void setConfig(ServerConfig config) {
-        this.config = config;
-    }
-
-    public ServerConfig getConfig() {
-        return config;
-    }
-
     /**
      * Kiem tra server hien tai co phai la primary cua key khong.
      * Neu chua co config cum hoac cum chi co 1 server -> coi nhu primary.
      */
-    public boolean isPrimary(String key) {
+    boolean isPrimary(String key) {
         ServerConfig cfg = this.config;
         if (cfg == null || cfg.serverCount() <= 1) {
             return true;
@@ -145,23 +137,12 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
     /**
      * Chi so server primary phu trach key.
      */
-    public int getPrimaryForKey(String key) {
+    int getPrimaryForKey(String key) {
         ServerConfig cfg = this.config;
         if (cfg == null || cfg.serverCount() <= 0) {
             return 0;
         }
         return HashUtil.computeServerIndex(key, cfg.serverCount());
-    }
-
-    /**
-     * Dia chi server primary phu trach key.
-     */
-    public ServerConfig.ServerAddress primaryHostFor(String key) {
-        ServerConfig cfg = this.config;
-        if (cfg == null || cfg.servers().isEmpty()) {
-            return null;
-        }
-        return cfg.servers().get(getPrimaryForKey(key));
     }
 
     /**
@@ -172,18 +153,10 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
      */
     Backup targetFor(String key) {
         ServerConfig cfg = this.config;
-        if (cfg != null && cfg.serverCount() > 1) {
-            if (!isPrimary(key)) {
-                int primaryIdx = getPrimaryForKey(key);
-                ServerConfig.ServerAddress primaryAddr = cfg.servers().get(primaryIdx);
-                return new Backup(primaryAddr.host(), cfg.replicationPort(primaryIdx));
-            }
-            if (backup != null) {
-                return backup;
-            }
-            int bIdx = cfg.backupIndex();
-            ServerConfig.ServerAddress bAddr = cfg.servers().get(bIdx);
-            return new Backup(bAddr.host(), cfg.replicationPort(bIdx));
+        if (cfg != null && cfg.serverCount() > 1 && !isPrimary(key)) {
+            int primaryIdx = getPrimaryForKey(key);
+            ServerConfig.ServerAddress primaryAddr = cfg.servers().get(primaryIdx);
+            return new Backup(primaryAddr.host(), cfg.replicationPort(primaryIdx));
         }
         return backup;
     }
@@ -431,7 +404,6 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
         if (config == null) {
             return 0;
         }
-        this.config = config;
         int n = config.serverCount();
         if (n <= 1) {
             return 0;

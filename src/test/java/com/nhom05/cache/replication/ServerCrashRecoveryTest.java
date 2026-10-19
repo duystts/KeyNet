@@ -6,6 +6,7 @@ import com.nhom05.cache.server.KeyValueStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.ServerSocket;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
@@ -207,21 +208,16 @@ class ServerCrashRecoveryTest {
         store1 = new KeyValueStore(60, 1000);
         store2 = new KeyValueStore(60, 1000);
 
-        handler0 = new ReplicationHandler(store0);
-        handler1 = new ReplicationHandler(store1);
-        handler2 = new ReplicationHandler(store2);
-
-        handler0.startListener(0);
-        handler1.startListener(0);
-        handler2.startListener(0);
-
-        int repPort0 = handler0.listenerPort();
-        int repPort1 = handler1.listenerPort();
-        int repPort2 = handler2.listenerPort();
-
-        handler0.setBackup("127.0.0.1", repPort1);
-        handler1.setBackup("127.0.0.1", repPort2);
-        handler2.setBackup("127.0.0.1", repPort0);
+        int repPort0;
+        int repPort1;
+        int repPort2;
+        try (ServerSocket s0 = new ServerSocket(0);
+             ServerSocket s1 = new ServerSocket(0);
+             ServerSocket s2 = new ServerSocket(0)) {
+            repPort0 = s0.getLocalPort();
+            repPort1 = s1.getLocalPort();
+            repPort2 = s2.getLocalPort();
+        }
 
         int clientPort0 = repPort0 - ServerConfig.REPLICATION_PORT_OFFSET;
         int clientPort1 = repPort1 - ServerConfig.REPLICATION_PORT_OFFSET;
@@ -235,8 +231,19 @@ class ServerCrashRecoveryTest {
 
         ServerConfig config0 = ServerConfig.of(serverAddresses, 0);
         ServerConfig config1 = ServerConfig.of(serverAddresses, 1);
-        handler0.setConfig(config0);
-        handler1.setConfig(config1);
+        ServerConfig config2 = ServerConfig.of(serverAddresses, 2);
+
+        handler0 = new ReplicationHandler(store0, config0);
+        handler1 = new ReplicationHandler(store1, config1);
+        handler2 = new ReplicationHandler(store2, config2);
+
+        handler0.startListener(repPort0);
+        handler1.startListener(repPort1);
+        handler2.startListener(repPort2);
+
+        handler0.setBackup("127.0.0.1", repPort1);
+        handler1.setBackup("127.0.0.1", repPort2);
+        handler2.setBackup("127.0.0.1", repPort0);
 
         // Key0 thuoc primary Server #0, replica la Server #1
         String key0 = findKeyForServer(0, n, "user_failover");

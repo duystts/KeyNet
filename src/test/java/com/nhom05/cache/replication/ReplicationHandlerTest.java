@@ -409,6 +409,7 @@ class ReplicationHandlerTest {
 
             KeyValueStore store1 = new KeyValueStore(60, 100);
             try (ReplicationHandler handler1 = new ReplicationHandler(store1, config1)) {
+                handler1.setBackup("127.0.0.1", portS2);
                 // Tìm key có primary = 0 (k0) và key có primary = 1 (k1)
                 String keyPrimary0 = null;
                 String keyPrimary1 = null;
@@ -432,7 +433,6 @@ class ReplicationHandlerTest {
                 // 1. Kiểm tra logic vai trò
                 assertFalse(handler1.isPrimary(k0), "S1 khong phai primary cua keyPrimary0");
                 assertEquals(0, handler1.getPrimaryForKey(k0));
-                assertEquals(clientPort0, handler1.primaryHostFor(k0).port());
 
                 assertTrue(handler1.isPrimary(k1), "S1 la primary cua keyPrimary1");
                 assertEquals(1, handler1.getPrimaryForKey(k1));
