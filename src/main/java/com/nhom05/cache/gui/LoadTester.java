@@ -126,9 +126,9 @@ public class LoadTester {
             return false;
         }
         if ("PUT".equalsIgnoreCase(requestType)) {
-            return responseLine.equals("OK") || responseLine.startsWith("OK");
+            return "OK".equals(responseLine);
         } else if ("GET".equalsIgnoreCase(requestType)) {
-            return responseLine.startsWith("VALUE|") || responseLine.equals("NOTFOUND");
+            return responseLine.startsWith("VALUE|") || "NOTFOUND".equals(responseLine);
         }
         return false;
     }
@@ -190,20 +190,18 @@ public class LoadTester {
                         break;
                     }
 
-                    int globalIdx = tId * requestsPerThread + reqIdx;
-                    int keyNum = (globalIdx) % keyCount;
+                    // Chon key ngau nhien trong pham vi keyCount de test ca Cache Hit va Miss (NOTFOUND)
+                    int keyNum = ThreadLocalRandom.current().nextInt(keyCount);
                     String key = "load_key_" + keyNum;
 
-                    // Xac dinh thao tac la PUT hay GET dua theo ty le putPercentage
+                    // Xac dinh thao tac la PUT hay GET tron ngau nhien theo ty le putPercentage
                     boolean isPut;
                     if (putPercentage >= 100) {
                         isPut = true;
                     } else if (putPercentage <= 0) {
                         isPut = false;
-                    } else if (requestsPerThread >= 100) {
-                        isPut = (reqIdx % 100) < putPercentage;
                     } else {
-                        isPut = ((long) reqIdx * 100 / requestsPerThread) < putPercentage;
+                        isPut = ThreadLocalRandom.current().nextInt(100) < putPercentage;
                     }
                     String reqType = isPut ? "PUT" : "GET";
 

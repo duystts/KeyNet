@@ -22,9 +22,9 @@ class LoadTesterTest {
 
     @Test
     void testProtocolSuccessClassification() {
-        // PUT thanh cong chi khi tra ve OK hoac OK|...
+        // PUT thanh cong chi khi tra ve chinh xac OK (theo dac ta giao thuc)
         assertTrue(LoadTester.isSuccess("PUT", "OK"));
-        assertTrue(LoadTester.isSuccess("PUT", "OK|123456789"));
+        assertFalse(LoadTester.isSuccess("PUT", "OK|123456789"));
         assertFalse(LoadTester.isSuccess("PUT", "ERROR|E001|Sai cu phap"));
         assertFalse(LoadTester.isSuccess("PUT", "ERROR|E004|Khong ket noi duoc"));
         assertFalse(LoadTester.isSuccess("PUT", null));
