@@ -16,9 +16,14 @@ final class ClientHandler {
     private static final Logger LOGGER = Logger.getLogger(ClientHandler.class.getName());
 
     private final KeyValueStore store;
+    private volatile Replicator replicator = Replicator.NOOP;
 
     ClientHandler(KeyValueStore store) {
         this.store = store;
+    }
+
+    void setReplicator(Replicator replicator) {
+        this.replicator = replicator == null ? Replicator.NOOP : replicator;
     }
 
     /** Xu ly 1 dong request, tra ve dong response (chua co '\n'). Tach rieng de test khong can socket. */
@@ -45,7 +50,8 @@ final class ClientHandler {
         if (!ProtocolParser.isValueValid(value)) {
             return ProtocolParser.error(ErrorCode.E003);
         }
-        store.put(key, value);
+        long timestamp = store.put(key, value);
+        replicator.replicatePut(key, value, timestamp);
         return ProtocolParser.ok();
     }
 
@@ -61,6 +67,10 @@ final class ClientHandler {
         if (!ProtocolParser.isKeyValid(key)) {
             return ProtocolParser.error(ErrorCode.E002);
         }
-        return store.delete(key) ? ProtocolParser.ok() : ProtocolParser.notFound();
+        long timestamp = store.nextTimestamp();
+        boolean existed = store.delete(key, timestamp);
+        // Gui ca khi NOTFOUND: key co the chi con tren server du phong (ghi luc server nay chet)
+        replicator.replicateDelete(key, timestamp);
+        return existed ? ProtocolParser.ok() : ProtocolParser.notFound();
     }
 }

@@ -70,6 +70,11 @@ public final class CacheServer {
         return store;
     }
 
+    /** Gan Module 3: sau moi PUT/DELETE thanh cong se goi replicator. Goi truoc start(). */
+    public void setReplicator(Replicator replicator) {
+        handler.setReplicator(replicator);
+    }
+
     /** Mo port va nhan ket noi; chan (block) cho toi khi shutdown(). */
     public void start() throws IOException {
         try (ServerSocket ss = new ServerSocket(port)) {

@@ -4,6 +4,7 @@ import com.nhom05.cache.common.HashUtil;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.server.KeyValueStore;
+import com.nhom05.cache.server.Replicator;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -38,7 +39,7 @@ import java.util.logging.Logger;
  * Phia nhan: ServerSocket lang nghe, moi lenh goi apply(line) cap nhat
  * KeyValueStore.
  */
-public final class ReplicationHandler implements AutoCloseable {
+public final class ReplicationHandler implements Replicator, AutoCloseable {
 
     private static final Logger LOGGER = Logger.getLogger(ReplicationHandler.class.getName());
 
