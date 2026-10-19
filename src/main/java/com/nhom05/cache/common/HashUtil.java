@@ -23,6 +23,7 @@ public final class HashUtil {
         return Math.abs(key.hashCode() % n);
     }
 
+
     /** Chi so server du phong cua serverIndex: server ke tiep, quay vong ve 0. */
     public static int replicaIndex(int serverIndex, int n) {
         requirePositive(n);

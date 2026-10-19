@@ -77,6 +77,15 @@ public final class ServerConfig {
                 registry);
     }
 
+    /** Tao ServerConfig truc tiep tu danh sach dia chi (dung cho test va lap trinh). */
+    public static ServerConfig of(List<ServerAddress> servers, int serverIndex) {
+        return new ServerConfig(servers, serverIndex, 60, 1000, new ServerAddress("127.0.0.1", 6000));
+    }
+
+    public static ServerConfig of(List<ServerAddress> servers, int serverIndex, long ttlSeconds, int maxEntries) {
+        return new ServerConfig(servers, serverIndex, ttlSeconds, maxEntries, new ServerAddress("127.0.0.1", 6000));
+    }
+
     private static int intProp(Properties props, String name, String defaultValue) {
         String raw = props.getProperty(name, defaultValue);
         if (raw == null) {

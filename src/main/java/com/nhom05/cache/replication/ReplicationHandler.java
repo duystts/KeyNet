@@ -1,6 +1,8 @@
 package com.nhom05.cache.replication;
 
+import com.nhom05.cache.common.HashUtil;
 import com.nhom05.cache.common.ProtocolParser;
+import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.server.KeyValueStore;
 
 import java.io.BufferedReader;
@@ -11,10 +13,12 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -26,6 +30,7 @@ import java.util.logging.Logger;
  * REPLICATE|PUT|key|value|timestamp
  * REPLICATE|DELETE|key|timestamp
  * Backup tra ve "OK" hoac "ERROR|E001|mo ta" neu ban tin sai.
+ * Dong bo: SYNC -> danh sach REPLICATE|PUT... -> END.
  *
  * Phia gui: chay tren thread pool rieng, khong bao gio chan thread tra loi
  * client,
@@ -39,6 +44,8 @@ public final class ReplicationHandler implements AutoCloseable {
 
     private static final String OK = "OK";
     private static final String ERR_FORMAT = "ERROR|E001|";
+    private static final String SYNC = "SYNC";
+    private static final String END = "END";
     private static final int CONNECT_TIMEOUT_MS = 1000;
     private static final int READ_TIMEOUT_MS = 2000;
 
@@ -179,12 +186,25 @@ public final class ReplicationHandler implements AutoCloseable {
             PrintWriter out = new PrintWriter(s.getOutputStream(), false, StandardCharsets.UTF_8);
             String line;
             while ((line = in.readLine()) != null) {
+                if (SYNC.equalsIgnoreCase(line.strip())) {
+                    handleSync(out);
+                    continue;
+                }
                 out.print(apply(line) + "\n");
                 out.flush();
             }
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Loi xu ly ket noi replication: {0}", e.toString());
         }
+    }
+
+    void handleSync(PrintWriter out) {
+        List<KeyValueStore.Snapshot> snapshots = store.snapshot();
+        for (KeyValueStore.Snapshot snap : snapshots) {
+            out.print(ProtocolParser.replicatePut(snap.key(), snap.value(), snap.timestamp()) + "\n");
+        }
+        out.print(END + "\n");
+        out.flush();
     }
 
     /**
@@ -206,6 +226,110 @@ public final class ReplicationHandler implements AutoCloseable {
             store.deleteReplicated(r.key(), r.timestamp());
         }
         return OK;
+    }
+
+    // ------------------------------------------------------------------
+    // Phuc hoi du lieu khi khoi dong lai (SYNC & Recover - Issue #10)
+    // ------------------------------------------------------------------
+
+
+    /**
+     * Gui lenh SYNC toi server doi tac de keo du lieu ve.
+     * keyFilter dung de loc key thuoc phan vung can nhan.
+     * Tra ve tong so key da nap thanh cong, hoac -1 neu khong the ket noi.
+     */
+    public int syncFrom(String host, int replicationPort, Predicate<String> keyFilter) {
+        if (host == null || replicationPort <= 0) {
+            return -1;
+        }
+        int count = 0;
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, replicationPort), CONNECT_TIMEOUT_MS);
+            socket.setSoTimeout(READ_TIMEOUT_MS);
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), false, StandardCharsets.UTF_8);
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            out.print(SYNC + "\n");
+            out.flush();
+
+            String line;
+            while ((line = in.readLine()) != null) {
+                line = line.strip();
+                if (END.equalsIgnoreCase(line)) {
+                    break;
+                }
+                ProtocolParser.Replicate rep = ProtocolParser.parseReplicate(line);
+                if (rep == null) {
+                    continue;
+                }
+                String key = rep.key();
+                if (keyFilter != null && !keyFilter.test(key)) {
+                    continue;
+                }
+                if (rep.isPut()) {
+                    if (store.putReplicated(key, rep.value(), rep.timestamp())) {
+                        count++;
+                    }
+                } else {
+                    if (store.deleteReplicated(key, rep.timestamp())) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Khong the sync tu {0}:{1}: {2}",
+                    new Object[]{host, replicationPort, e.toString()});
+            return -1;
+        }
+    }
+
+    /**
+     * Phuc hoi du lieu khi server khoi dong lai sau su co.
+     * Keo du lieu tu server ke sau (next) va server ke truoc (prev).
+     * Chi giu key neu owner == serverIndex hoac owner == prevIndex.
+     * Tra ve tong so key da nap thanh cong.
+     */
+    public int recover(ServerConfig config) {
+        if (config == null) {
+            return 0;
+        }
+        int n = config.serverCount();
+        if (n <= 1) {
+            return 0;
+        }
+        int i = config.serverIndex();
+        int next = (i + 1) % n;
+        int prev = (i - 1 + n) % n;
+
+        Predicate<String> partitionFilter = key -> {
+            int owner = HashUtil.computeServerIndex(key, n);
+            return owner == i || owner == prev;
+        };
+
+        int totalRecovered = 0;
+
+        // 1. Keo tu server ke sau (next): giu backup cua #i va cac ban ghi failover
+        String nextHost = config.servers().get(next).host();
+        int nextPort = config.replicationPort(next);
+        int fromNext = syncFrom(nextHost, nextPort, partitionFilter);
+        if (fromNext > 0) {
+            totalRecovered += fromNext;
+        }
+
+        // 2. Keo tu server ke truoc (prev): vi #i lam backup cho prev
+        if (prev != next) {
+            String prevHost = config.servers().get(prev).host();
+            int prevPort = config.replicationPort(prev);
+            int fromPrev = syncFrom(prevHost, prevPort, partitionFilter);
+            if (fromPrev > 0) {
+                totalRecovered += fromPrev;
+            }
+        }
+
+        LOGGER.log(Level.INFO, "Server #{0} recover hoan tat: {1} key duoc nap",
+                new Object[]{i, totalRecovered});
+        return totalRecovered;
     }
 
     /** Dong listener va cac thread pool. */
