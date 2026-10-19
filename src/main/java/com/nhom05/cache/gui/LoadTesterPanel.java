@@ -178,31 +178,13 @@ public class LoadTesterPanel extends JPanel {
         panel.add(formGrid, BorderLayout.CENTER);
 
         // Buttons Bar
-        JPanel btnBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        JPanel btnBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
         btnBar.setOpaque(false);
 
-        btnStart = new JButton("▶ Bắt Đầu Đo Tải");
-        btnStart.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btnStart.setBackground(new Color(46, 125, 50));
-        btnStart.setForeground(Color.WHITE);
-        btnStart.setFocusPainted(false);
-        btnStart.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnStart.addActionListener(e -> startLoadTest());
-
-        btnStop = new JButton("⏹ Dừng");
-        btnStop.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btnStop.setBackground(new Color(198, 40, 40));
-        btnStop.setForeground(Color.WHITE);
-        btnStop.setFocusPainted(false);
+        btnStart = createStyledButton("Bắt Đầu Đo Tải", new Color(46, 125, 50), Color.WHITE, e -> startLoadTest());
+        btnStop = createStyledButton("Dừng Đo Tải", new Color(198, 40, 40), Color.WHITE, e -> stopLoadTest());
         btnStop.setEnabled(false);
-        btnStop.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnStop.addActionListener(e -> stopLoadTest());
-
-        btnOpenReport = new JButton("📄 Xem File Báo Cáo");
-        btnOpenReport.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        btnOpenReport.setBackground(Color.WHITE);
-        btnOpenReport.setFocusPainted(false);
-        btnOpenReport.addActionListener(e -> openReportFile());
+        btnOpenReport = createStyledButton("Xem File Báo Cáo", new Color(25, 118, 210), Color.WHITE, e -> openReportFile());
 
         btnBar.add(btnStart);
         btnBar.add(btnStop);
@@ -210,6 +192,46 @@ public class LoadTesterPanel extends JPanel {
 
         panel.add(btnBar, BorderLayout.SOUTH);
         return panel;
+    }
+
+    private JButton createStyledButton(String text, Color bg, Color fg, java.awt.event.ActionListener al) {
+        JButton btn = new JButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                if (!isEnabled()) {
+                    g2.setColor(new Color(230, 230, 230));
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                    g2.setColor(new Color(200, 200, 200));
+                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 6, 6);
+                    setForeground(new Color(130, 130, 130));
+                } else {
+                    setForeground(fg);
+                    if (getModel().isPressed()) {
+                        g2.setColor(bg.darker());
+                    } else if (getModel().isRollover()) {
+                        g2.setColor(bg.brighter());
+                    } else {
+                        g2.setColor(bg);
+                    }
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                }
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        btn.setForeground(fg);
+        btn.setContentAreaFilled(false);
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setOpaque(false);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(8, 16, 8, 16));
+        btn.addActionListener(al);
+        return btn;
     }
 
     private JPanel createKpiCardsPanel() {
