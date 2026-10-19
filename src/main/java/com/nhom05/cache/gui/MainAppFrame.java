@@ -14,6 +14,7 @@ import java.io.IOException;
  * Cua so tich hop tong the cua he thong KeyNet (Module 5):
  * - Tab 1: Dashboard giam sat cum Cache Server va Registry (#14)
  * - Tab 2: Cache Client thao tac PUT/GET/DELETE/INFO va Key Explorer (#15)
+ * - Tab 3: Kiem thu tai cum Cache Server voi N luong x M request (#17)
  *
  * Chay truc tiep bang:
  *   java -cp target/keynet.jar com.nhom05.cache.gui.MainAppFrame [duong_dan_config]
@@ -22,23 +23,26 @@ public class MainAppFrame extends JFrame {
 
     private final DashboardPanel dashboardPanel;
     private final ClientPanel clientPanel;
+    private final LoadTesterPanel loadTesterPanel;
 
     public MainAppFrame(ServerConfig config, RegistryClient registryClient, CacheClient cacheClient) {
         super("KeyNet — Hệ Thống Cache Phân Tán (Nhóm 05)");
 
         this.dashboardPanel = new DashboardPanel(config, registryClient);
         this.clientPanel = new ClientPanel(cacheClient);
+        this.loadTesterPanel = new LoadTesterPanel(cacheClient);
 
         JTabbedPane rootTabbedPane = new JTabbedPane();
         rootTabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 13));
 
         rootTabbedPane.addTab("Giám Sát Cụm (Dashboard #14)", dashboardPanel);
         rootTabbedPane.addTab("Thao Tác Cache & Key Explorer (#15)", clientPanel);
+        rootTabbedPane.addTab("Kiểm Thử Tải (Load Tester #17)", loadTesterPanel);
 
         setContentPane(rootTabbedPane);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(1060, 720);
-        setMinimumSize(new Dimension(850, 550));
+        setSize(1080, 740);
+        setMinimumSize(new Dimension(880, 560));
         setLocationRelativeTo(null);
 
         addWindowListener(new WindowAdapter() {
@@ -55,6 +59,10 @@ public class MainAppFrame extends JFrame {
 
     public ClientPanel clientPanel() {
         return clientPanel;
+    }
+
+    public LoadTesterPanel loadTesterPanel() {
+        return loadTesterPanel;
     }
 
     public static void main(String[] args) {
