@@ -166,6 +166,43 @@ class ClusterIntegrationTest {
         assertTrue(waitFor(() -> "DOWN".equals(registryClient.status(2))));
     }
 
+    @Test
+    void testFailoverWriteReplicatesBackToPrimaryNcScenario() throws Exception {
+        // Tái hiện kịch bản shell commands (nc) trong yêu cầu:
+        // printf 'PUT|username|ban-dau\n' | nc 127.0.0.1 5001 # OK (#0 là primary)
+        // printf 'PUT|username|ban-moi\n' | nc 127.0.0.1 5002 # OK (client failover sang #1)
+        // printf 'GET|username\n' | nc 127.0.0.1 5001 # EXPECT: VALUE|ban-moi <- #0 phải trả giá trị mới
+        String key = "username";
+        assertEquals(0, client.router().primaryIndex(key), "username phai thuoc phan vung primary cua server #0");
+
+        int port0 = config.servers().get(0).port();
+        int port1 = config.servers().get(1).port();
+
+        // 1. Ghi ban-dau toi server #0 (primary)
+        assertEquals("OK", sendLine(port0, "PUT|" + key + "|ban-dau"));
+
+        // Doi ban tin replicate sang #1
+        assertTrue(waitFor(() -> "ban-dau".equals(nodes[1].server().store().get(key))));
+        assertEquals("VALUE|ban-dau", sendLine(port0, "GET|" + key));
+
+        // 2. Ghi ban-moi toi server #1 (gia lap client failover sang replica #1)
+        assertEquals("OK", sendLine(port1, "PUT|" + key + "|ban-moi"));
+
+        // Server #1 phai replicate ban-moi ve Primary #0 (thay vi ban tiep sang #2)
+        assertTrue(waitFor(() -> "ban-moi".equals(nodes[0].server().store().get(key))),
+                "Primary #0 phai nhan duoc ban ghi replicate tu replica #1");
+
+        // 3. Doc tu server #0 (primary): phai tra ve ban-moi
+        assertEquals("VALUE|ban-moi", sendLine(port0, "GET|" + key),
+                "Doc truc tiep tu primary #0 phai tra ve VALUE|ban-moi sau failover write");
+
+        // 4. CacheClient doc GET cung phai tra ve ban-moi tu server #0 (khong failover)
+        CacheClient.Response r = client.send(key, "GET|" + key);
+        assertEquals("VALUE|ban-moi", r.line());
+        assertEquals(0, r.servedBy());
+        assertFalse(r.failedOver());
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private Map<String, String> writeKeys(String prefix, int count) {

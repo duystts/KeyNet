@@ -69,6 +69,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
     private final KeyValueStore store;
     /** null = chua co server du phong (cum 1 server) -> khong gui di dau. */
     private volatile Backup backup;
+    private volatile ServerConfig config;
 
     private final ThreadPoolExecutor senderPool;
     private final AtomicLong droppedSends = new AtomicLong();
@@ -80,15 +81,24 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
 
     /** @param store kho du lieu cua server nay (dung khi nhan replication) */
     public ReplicationHandler(KeyValueStore store) {
-        this(store, SEND_QUEUE_CAPACITY);
+        this(store, SEND_QUEUE_CAPACITY, null);
+    }
+
+    public ReplicationHandler(KeyValueStore store, ServerConfig config) {
+        this(store, SEND_QUEUE_CAPACITY, config);
     }
 
     /** Cho test dat hang doi gui nho. */
     ReplicationHandler(KeyValueStore store, int sendQueueCapacity) {
+        this(store, sendQueueCapacity, null);
+    }
+
+    ReplicationHandler(KeyValueStore store, int sendQueueCapacity, ServerConfig config) {
         if (store == null) {
             throw new IllegalArgumentException("store khong duoc null");
         }
         this.store = store;
+        this.config = config;
         this.senderPool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(sendQueueCapacity), daemonFactory("repl-sender"));
         this.listenerPool = Executors.newCachedThreadPool(daemonFactory("repl-listener"));
@@ -112,22 +122,87 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
         backup = host == null || replicationPort <= 0 ? null : new Backup(host, replicationPort);
     }
 
+    public void setConfig(ServerConfig config) {
+        this.config = config;
+    }
+
+    public ServerConfig getConfig() {
+        return config;
+    }
+
+    /**
+     * Kiem tra server hien tai co phai la primary cua key khong.
+     * Neu chua co config cum hoac cum chi co 1 server -> coi nhu primary.
+     */
+    public boolean isPrimary(String key) {
+        ServerConfig cfg = this.config;
+        if (cfg == null || cfg.serverCount() <= 1) {
+            return true;
+        }
+        return HashUtil.computeServerIndex(key, cfg.serverCount()) == cfg.serverIndex();
+    }
+
+    /**
+     * Chi so server primary phu trach key.
+     */
+    public int getPrimaryForKey(String key) {
+        ServerConfig cfg = this.config;
+        if (cfg == null || cfg.serverCount() <= 0) {
+            return 0;
+        }
+        return HashUtil.computeServerIndex(key, cfg.serverCount());
+    }
+
+    /**
+     * Dia chi server primary phu trach key.
+     */
+    public ServerConfig.ServerAddress primaryHostFor(String key) {
+        ServerConfig cfg = this.config;
+        if (cfg == null || cfg.servers().isEmpty()) {
+            return null;
+        }
+        return cfg.servers().get(getPrimaryForKey(key));
+    }
+
+    /**
+     * Xac dinh doi tac can gui REPLICATE theo key ownership:
+     * - Neu server hien tai la primary cua key: gui toi replica (backup: (i+1) mod N).
+     * - Neu server hien tai la replica (ghi xay ra qua failover tu client): khong gui tiep
+     *   sang replica ke tiep (i+2) ma gui ve server primary cua key (i).
+     */
+    Backup targetFor(String key) {
+        ServerConfig cfg = this.config;
+        if (cfg != null && cfg.serverCount() > 1) {
+            if (!isPrimary(key)) {
+                int primaryIdx = getPrimaryForKey(key);
+                ServerConfig.ServerAddress primaryAddr = cfg.servers().get(primaryIdx);
+                return new Backup(primaryAddr.host(), cfg.replicationPort(primaryIdx));
+            }
+            if (backup != null) {
+                return backup;
+            }
+            int bIdx = cfg.backupIndex();
+            ServerConfig.ServerAddress bAddr = cfg.servers().get(bIdx);
+            return new Backup(bAddr.host(), cfg.replicationPort(bIdx));
+        }
+        return backup;
+    }
+
     /**
      * Gui REPLICATE|PUT|key|value|timestamp, tra ve ngay lap tuc.
      * timestamp la thoi diem ghi tren server chinh (#9 dung de so sanh ban nao moi hon).
      */
     public void replicatePut(String key, String value, long timestamp) {
-        send(ProtocolParser.replicatePut(key, value, timestamp));
+        send(targetFor(key), ProtocolParser.replicatePut(key, value, timestamp));
     }
 
     /** Gui REPLICATE|DELETE|key|timestamp, tra ve ngay lap tuc. */
     public void replicateDelete(String key, long timestamp) {
-        send(ProtocolParser.replicateDelete(key, timestamp));
+        send(targetFor(key), ProtocolParser.replicateDelete(key, timestamp));
     }
 
     /** Dua viec gui vao thread pool rieng; moi loi deu duoc nuot lai. */
-    private void send(String line) {
-        Backup target = backup;
+    private void send(Backup target, String line) {
         if (target == null) {
             return; // khong co doi tac
         }
@@ -261,6 +336,10 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
         for (KeyValueStore.Snapshot snap : snapshots) {
             out.print(ProtocolParser.replicatePut(snap.key(), snap.value(), snap.timestamp()) + "\n");
         }
+        List<KeyValueStore.TombstoneSnapshot> tombstoneSnapshots = store.tombstoneSnapshot();
+        for (KeyValueStore.TombstoneSnapshot snap : tombstoneSnapshots) {
+            out.print(ProtocolParser.replicateDelete(snap.key(), snap.timestamp()) + "\n");
+        }
         out.print(END + "\n");
         out.flush();
     }
@@ -352,6 +431,7 @@ public final class ReplicationHandler implements Replicator, AutoCloseable {
         if (config == null) {
             return 0;
         }
+        this.config = config;
         int n = config.serverCount();
         if (n <= 1) {
             return 0;

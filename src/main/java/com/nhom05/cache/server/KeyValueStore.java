@@ -55,6 +55,7 @@ public final class KeyValueStore implements AutoCloseable {
     }
 
     public record Snapshot(String key, String value, long timestamp) { }
+    public record TombstoneSnapshot(String key, long timestamp) { }
 
     private final ConcurrentHashMap<String, CacheEntry> map = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Tombstone> tombstones = new ConcurrentHashMap<>();
@@ -337,6 +338,28 @@ public final class KeyValueStore implements AutoCloseable {
             }
         }
         return list;
+    }
+
+    /** Chup anh toan bo tombstone con trong TTL (phuc vu co che SYNC khoi dong lai). */
+    public List<TombstoneSnapshot> tombstoneSnapshot() {
+        long now = clock.getAsLong();
+        List<TombstoneSnapshot> list = new ArrayList<>();
+        for (Map.Entry<String, Tombstone> e : tombstones.entrySet()) {
+            Tombstone t = e.getValue();
+            if (t != null && !t.isExpired(now)) {
+                list.add(new TombstoneSnapshot(e.getKey(), t.timestamp()));
+            }
+        }
+        return list;
+    }
+
+    /** Lay timestamp cua tombstone; tra ve -1 neu key khong co tombstone hoac tombstone da het han. */
+    public long getTombstoneTimestamp(String key) {
+        Tombstone t = tombstones.get(key);
+        if (t == null || t.isExpired(clock.getAsLong())) {
+            return -1L;
+        }
+        return t.timestamp();
     }
 
     @Override

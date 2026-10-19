@@ -198,4 +198,78 @@ class ServerCrashRecoveryTest {
         // Tong so key tren Server 1 phai dung bang 3
         assertEquals(3, store1.size(), "Server 1 chi duoc phep chua dung 3 key hop le");
     }
+
+    @Test
+    void testRecoverDeleteKhongLamKeySongLai() throws Exception {
+        int n = 3;
+
+        store0 = new KeyValueStore(60, 1000);
+        store1 = new KeyValueStore(60, 1000);
+        store2 = new KeyValueStore(60, 1000);
+
+        handler0 = new ReplicationHandler(store0);
+        handler1 = new ReplicationHandler(store1);
+        handler2 = new ReplicationHandler(store2);
+
+        handler0.startListener(0);
+        handler1.startListener(0);
+        handler2.startListener(0);
+
+        int repPort0 = handler0.listenerPort();
+        int repPort1 = handler1.listenerPort();
+        int repPort2 = handler2.listenerPort();
+
+        handler0.setBackup("127.0.0.1", repPort1);
+        handler1.setBackup("127.0.0.1", repPort2);
+        handler2.setBackup("127.0.0.1", repPort0);
+
+        int clientPort0 = repPort0 - ServerConfig.REPLICATION_PORT_OFFSET;
+        int clientPort1 = repPort1 - ServerConfig.REPLICATION_PORT_OFFSET;
+        int clientPort2 = repPort2 - ServerConfig.REPLICATION_PORT_OFFSET;
+
+        List<ServerConfig.ServerAddress> serverAddresses = List.of(
+                new ServerConfig.ServerAddress("127.0.0.1", clientPort0),
+                new ServerConfig.ServerAddress("127.0.0.1", clientPort1),
+                new ServerConfig.ServerAddress("127.0.0.1", clientPort2)
+        );
+
+        ServerConfig config0 = ServerConfig.of(serverAddresses, 0);
+        ServerConfig config1 = ServerConfig.of(serverAddresses, 1);
+        handler0.setConfig(config0);
+        handler1.setConfig(config1);
+
+        // Key0 thuoc primary Server #0, replica la Server #1
+        String key0 = findKeyForServer(0, n, "user_failover");
+        assertEquals(0, HashUtil.computeServerIndex(key0, n));
+
+        // 1. Client ghi vao server du phong S1 (failover path)
+        long tsPut = store1.put(key0, "val_failover");
+        handler1.replicatePut(key0, "val_failover", tsPut);
+
+        // Gia tri phai duoc replicate ve primary S0
+        assertTrue(waitFor(() -> "val_failover".equals(store0.get(key0)), 3000));
+        assertEquals("val_failover", store1.get(key0));
+
+        // 2. Lan recover 1 tren Primary S0
+        handler0.recover(config0);
+        assertEquals("val_failover", store0.get(key0));
+
+        // 3. Giua 2 lan recover: XOA key0 tren replica S1 (tao tombstone tren S1)
+        long tsDel = store1.nextTimestamp();
+        store1.delete(key0, tsDel);
+        assertNull(store1.get(key0));
+        assertEquals(tsDel, store1.getTombstoneTimestamp(key0));
+
+        // 4. Lan recover 2 tren Primary S0: SYNC tu S1 phai mang theo REPLICATE|DELETE tombstone
+        handler0.recover(config0);
+
+        // 5. Assert: key0 tren Primary S0 KHONG duoc phep song lai (phai la null)
+        assertNull(store0.get(key0), "Key da xoa tren replica khong duoc phep song lai tren primary sau recover");
+        assertEquals(tsDel, store0.getTombstoneTimestamp(key0), "Tombstone timestamp phai duoc ap vao store0");
+
+        // Ghi de voi timestamp cu hon tombstone phai bi chan
+        boolean putOlder = store0.putReplicated(key0, "stale_data", tsDel - 100);
+        assertFalse(putOlder);
+        assertNull(store0.get(key0));
+    }
 }

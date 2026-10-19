@@ -2,6 +2,8 @@ package com.nhom05.cache.replication;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.nhom05.cache.common.HashUtil;
+import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.server.KeyValueStore;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -9,6 +11,9 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -342,5 +347,149 @@ class ReplicationHandlerTest {
         assertTrue(sendLine(backup.listenerPort(), "SHUTDOWN").startsWith("ERROR|E001|"));
         // listener van hoat dong binh thuong
         assertEquals("OK", sendLine(backup.listenerPort(), "REPLICATE|PUT|k|v|1"));
+    }
+
+    @Test
+    void testRoutingLogicWhenOriginIsNotPrimary() throws Exception {
+        // Mô phỏng cụm 3 server: S0, S1, S2
+        // Handler đang test đóng vai trò Server #1 (serverIndex = 1)
+        List<String> receivedOnServer0 = Collections.synchronizedList(new ArrayList<>());
+        List<String> receivedOnServer2 = Collections.synchronizedList(new ArrayList<>());
+
+        try (ServerSocket fakeS0 = new ServerSocket(0);
+             ServerSocket fakeS2 = new ServerSocket(0)) {
+
+            int portS0 = fakeS0.getLocalPort();
+            int portS2 = fakeS2.getLocalPort();
+
+            // Client ports tương ứng theo quy ước: client port = rep port - 1000
+            int clientPort0 = portS0 - ServerConfig.REPLICATION_PORT_OFFSET;
+            int clientPort1 = 20001;
+            int clientPort2 = portS2 - ServerConfig.REPLICATION_PORT_OFFSET;
+
+            List<ServerConfig.ServerAddress> cluster = List.of(
+                    new ServerConfig.ServerAddress("127.0.0.1", clientPort0),
+                    new ServerConfig.ServerAddress("127.0.0.1", clientPort1),
+                    new ServerConfig.ServerAddress("127.0.0.1", clientPort2)
+            );
+
+            ServerConfig config1 = ServerConfig.of(cluster, 1);
+
+            // Accept loop cho fake S0
+            Thread t0 = new Thread(() -> {
+                while (!fakeS0.isClosed()) {
+                    try (Socket s = fakeS0.accept()) {
+                        BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+                        receivedOnServer0.add(in.readLine());
+                        s.getOutputStream().write("OK\n".getBytes(StandardCharsets.UTF_8));
+                        s.getOutputStream().flush();
+                    } catch (Exception ignored) {
+                        break;
+                    }
+                }
+            });
+            t0.setDaemon(true);
+            t0.start();
+
+            // Accept loop cho fake S2
+            Thread t2 = new Thread(() -> {
+                while (!fakeS2.isClosed()) {
+                    try (Socket s = fakeS2.accept()) {
+                        BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+                        receivedOnServer2.add(in.readLine());
+                        s.getOutputStream().write("OK\n".getBytes(StandardCharsets.UTF_8));
+                        s.getOutputStream().flush();
+                    } catch (Exception ignored) {
+                        break;
+                    }
+                }
+            });
+            t2.setDaemon(true);
+            t2.start();
+
+            KeyValueStore store1 = new KeyValueStore(60, 100);
+            try (ReplicationHandler handler1 = new ReplicationHandler(store1, config1)) {
+                // Tìm key có primary = 0 (k0) và key có primary = 1 (k1)
+                String keyPrimary0 = null;
+                String keyPrimary1 = null;
+                for (int seq = 1; seq < 1000; seq++) {
+                    String candidate = "key_" + seq;
+                    int p = HashUtil.computeServerIndex(candidate, 3);
+                    if (p == 0 && keyPrimary0 == null) {
+                        keyPrimary0 = candidate;
+                    } else if (p == 1 && keyPrimary1 == null) {
+                        keyPrimary1 = candidate;
+                    }
+                    if (keyPrimary0 != null && keyPrimary1 != null) {
+                        break;
+                    }
+                }
+                assertNotNull(keyPrimary0);
+                assertNotNull(keyPrimary1);
+                final String k0 = keyPrimary0;
+                final String k1 = keyPrimary1;
+
+                // 1. Kiểm tra logic vai trò
+                assertFalse(handler1.isPrimary(k0), "S1 khong phai primary cua keyPrimary0");
+                assertEquals(0, handler1.getPrimaryForKey(k0));
+                assertEquals(clientPort0, handler1.primaryHostFor(k0).port());
+
+                assertTrue(handler1.isPrimary(k1), "S1 la primary cua keyPrimary1");
+                assertEquals(1, handler1.getPrimaryForKey(k1));
+
+                // 2. Ghi keyPrimary0 (failover path): REPLICATE phai gui ve Server 0, KHONG gui toi Server 2
+                handler1.replicatePut(k0, "val0", 1001L);
+                assertTrue(waitFor(() -> receivedOnServer0.stream().anyMatch(l -> l.contains(k0))));
+                assertTrue(receivedOnServer0.get(0).startsWith("REPLICATE|PUT|" + k0 + "|val0|1001"));
+                assertEquals(0, receivedOnServer2.size(), "Server 2 khong duoc nhan REPLICATE cua keyPrimary0");
+
+                handler1.replicateDelete(k0, 1002L);
+                assertTrue(waitFor(() -> receivedOnServer0.stream().anyMatch(l -> l.startsWith("REPLICATE|DELETE|" + k0))));
+                assertEquals(0, receivedOnServer2.size(), "Server 2 van khong nhan duoc gi");
+
+                // 3. Ghi keyPrimary1 (primary path tren S1): REPLICATE phai gui toi replica tiep theo la Server 2
+                handler1.replicatePut(k1, "val1", 2001L);
+                assertTrue(waitFor(() -> receivedOnServer2.stream().anyMatch(l -> l.contains(k1))));
+                assertTrue(receivedOnServer2.get(0).startsWith("REPLICATE|PUT|" + k1 + "|val1|2001"));
+            } finally {
+                store1.close();
+            }
+        }
+    }
+
+    @Test
+    void testSyncIncludesTombstoneAndPreventsResurrection() throws Exception {
+        // backupStore tao 1 key roi xoa de tao tombstone
+        long putTs = backupStore.put("k_active", "val_active");
+        long delTs = backupStore.nextTimestamp();
+        backupStore.delete("k_deleted", delTs);
+
+        // Kiem tra tombstone snapshot
+        var tombstones = backupStore.tombstoneSnapshot();
+        assertEquals(1, tombstones.size());
+        assertEquals("k_deleted", tombstones.get(0).key());
+        assertEquals(delTs, tombstones.get(0).timestamp());
+
+        // freshStore gia lap server dang phuc hoi, co ban ghi cu "stale_val"
+        KeyValueStore freshStore = new KeyValueStore(60, 100);
+        freshStore.putReplicated("k_deleted", "stale_val", delTs - 50);
+        assertEquals("stale_val", freshStore.get("k_deleted"));
+
+        try (ReplicationHandler freshHandler = new ReplicationHandler(freshStore)) {
+            // syncFrom tu backup: phai nhan ca REPLICATE|PUT va REPLICATE|DELETE
+            int loaded = freshHandler.syncFrom("127.0.0.1", backup.listenerPort(), null);
+            assertTrue(loaded >= 2, "Nap it nhat 2 ban ghi (1 PUT + 1 DELETE tombstone)");
+
+            assertEquals("val_active", freshStore.get("k_active"));
+            assertNull(freshStore.get("k_deleted"), "Key da xoa khong duoc phep ton tai");
+            assertEquals(delTs, freshStore.getTombstoneTimestamp("k_deleted"));
+
+            // Thu ghi de ban ghi cu hon tombstone -> phai bi tu choi, key khong song lai
+            boolean resurrected = freshStore.putReplicated("k_deleted", "resurrected", delTs - 10);
+            assertFalse(resurrected, "PUT voi timestamp cu hon tombstone phai bi bo qua");
+            assertNull(freshStore.get("k_deleted"), "Key van phai la null");
+        } finally {
+            freshStore.close();
+        }
     }
 }
