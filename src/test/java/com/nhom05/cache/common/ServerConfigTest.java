@@ -92,4 +92,34 @@ class ServerConfigTest {
         assertEquals(1, c.backupIndex());
         assertEquals(0, c.withServerIndex(2).backupIndex());
     }
+
+    @Test
+    void rejectsPortCollisions() {
+        // cong replication cua server.0 (5000 + 1000) trung Registry 6000
+        Properties p = threeServers();
+        p.setProperty("server.0.port", "5000");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> ServerConfig.fromProperties(p));
+        assertTrue(e.getMessage().contains("6000"), e.getMessage());
+
+        // 2 server cung 1 cong
+        Properties same = threeServers();
+        same.setProperty("server.1.port", "5001");
+        assertThrows(IllegalArgumentException.class, () -> ServerConfig.fromProperties(same));
+
+        // cong client cua server nay trung cong replication cua server kia
+        Properties cross = threeServers();
+        cross.setProperty("server.2.port", "6001");
+        assertThrows(IllegalArgumentException.class, () -> ServerConfig.fromProperties(cross));
+
+        // khac may thi khong trung
+        Properties otherHost = threeServers();
+        otherHost.setProperty("server.1.host", "192.168.1.20");
+        otherHost.setProperty("server.1.port", "5001");
+        assertEquals(3, ServerConfig.fromProperties(otherHost).serverCount());
+
+        // cong replication vuot 65535
+        Properties tooHigh = threeServers();
+        tooHigh.setProperty("server.0.port", "65000");
+        assertThrows(IllegalArgumentException.class, () -> ServerConfig.fromProperties(tooHigh));
+    }
 }

@@ -6,7 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -44,6 +46,7 @@ public final class ServerConfig {
         if (ttlSeconds <= 0 || maxEntries <= 0) {
             throw new IllegalArgumentException("cache.ttlSeconds va cache.maxEntries phai > 0");
         }
+        checkPortsDistinct(servers, registry);
         this.servers = List.copyOf(servers);
         this.serverIndex = serverIndex;
         this.ttlSeconds = ttlSeconds;
@@ -84,6 +87,34 @@ public final class ServerConfig {
 
     public static ServerConfig of(List<ServerAddress> servers, int serverIndex, long ttlSeconds, int maxEntries) {
         return new ServerConfig(servers, serverIndex, ttlSeconds, maxEntries, new ServerAddress("127.0.0.1", 6000));
+    }
+
+    /**
+     * Moi server dung 2 cong (client va client + 1000), cung may thi khong duoc trung nhau
+     * va khong trung cong Registry. Vd server.0.port=5000 -> cong replication 6000 trung Registry:
+     * server van chay nhung heartbeat / replication hong am tham.
+     */
+    private static void checkPortsDistinct(List<ServerAddress> servers, ServerAddress registry) {
+        Map<String, String> used = new HashMap<>();
+        if (registry != null) {
+            claim(used, registry.host(), registry.port(), "registry.port");
+        }
+        for (int i = 0; i < servers.size(); i++) {
+            ServerAddress s = servers.get(i);
+            claim(used, s.host(), s.port(), "server." + i + ".port");
+            claim(used, s.host(), s.port() + REPLICATION_PORT_OFFSET, "cong replication cua server." + i);
+        }
+    }
+
+    private static void claim(Map<String, String> used, String host, int port, String owner) {
+        if (port <= 0 || port > 65535) {
+            throw new IllegalArgumentException(owner + "=" + port + " nam ngoai 1..65535");
+        }
+        String previous = used.putIfAbsent(host + ":" + port, owner);
+        if (previous != null) {
+            throw new IllegalArgumentException("Cong " + host + ":" + port + " bi trung: "
+                    + previous + " va " + owner);
+        }
     }
 
     private static int intProp(Properties props, String name, String defaultValue) {
