@@ -166,10 +166,10 @@ public class DashboardPanel extends JPanel {
         JPanel clusterCard = createCardPanel("TRẠNG THÁI CỤM", clusterStatusCardValue, clusterHealthBar);
 
         totalKeysCardValue = new JLabel("0", JLabel.CENTER);
-        JLabel keysUnit = new JLabel("keys lưu trữ", JLabel.CENTER);
+        JLabel keysUnit = new JLabel("bản ghi (gồm bản sao)", JLabel.CENTER);
         keysUnit.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         keysUnit.setForeground(Color.GRAY);
-        JPanel keysCard = createCardPanel("TỔNG SỐ KEY", totalKeysCardValue, keysUnit);
+        JPanel keysCard = createCardPanel("TỔNG SỐ BẢN GHI", totalKeysCardValue, keysUnit);
 
         totalRequestsCardValue = new JLabel("0", JLabel.CENTER);
         JLabel reqsUnit = new JLabel("requests đã xử lý", JLabel.CENTER);
@@ -261,15 +261,15 @@ public class DashboardPanel extends JPanel {
         serverTable.getColumnModel().getColumn(6).setCellRenderer(rightRenderer);
         serverTable.getColumnModel().getColumn(7).setCellRenderer(rightRenderer);
 
-        // Canh do rong cot
+        // Canh do rong cot (cot Trang thai rong 185px de khong bi cat chu)
         serverTable.getColumnModel().getColumn(0).setPreferredWidth(70);
-        serverTable.getColumnModel().getColumn(1).setPreferredWidth(110);
-        serverTable.getColumnModel().getColumn(2).setPreferredWidth(90);
-        serverTable.getColumnModel().getColumn(3).setPreferredWidth(100);
-        serverTable.getColumnModel().getColumn(4).setPreferredWidth(110);
-        serverTable.getColumnModel().getColumn(5).setPreferredWidth(150);
-        serverTable.getColumnModel().getColumn(6).setPreferredWidth(80);
-        serverTable.getColumnModel().getColumn(7).setPreferredWidth(100);
+        serverTable.getColumnModel().getColumn(1).setPreferredWidth(100);
+        serverTable.getColumnModel().getColumn(2).setPreferredWidth(85);
+        serverTable.getColumnModel().getColumn(3).setPreferredWidth(95);
+        serverTable.getColumnModel().getColumn(4).setPreferredWidth(95);
+        serverTable.getColumnModel().getColumn(5).setPreferredWidth(185);
+        serverTable.getColumnModel().getColumn(6).setPreferredWidth(105);
+        serverTable.getColumnModel().getColumn(7).setPreferredWidth(105);
 
         JScrollPane scrollPane = new JScrollPane(serverTable);
         // QUAN TRONG: Dat mau nen cho ca JScrollPane va Viewport de khong bi chu trang nen sang
@@ -518,8 +518,8 @@ public class DashboardPanel extends JPanel {
                 case 3 -> n.replicationPort();
                 case 4 -> "Server #" + n.backupForIndex();
                 case 5 -> n.status();
-                case 6 -> String.format("%,d", n.keyCount());
-                case 7 -> String.format("%,d", n.requestCount());
+                case 6 -> n.isUp() ? String.format("%,d", n.keyCount()) : (n.keyCount() > 0 ? String.format("%,d (lần cuối)", n.keyCount()) : "—");
+                case 7 -> n.isUp() ? String.format("%,d", n.requestCount()) : (n.requestCount() > 0 ? String.format("%,d (lần cuối)", n.requestCount()) : "—");
                 default -> "";
             };
         }
