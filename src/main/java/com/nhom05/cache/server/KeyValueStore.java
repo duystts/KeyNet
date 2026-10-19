@@ -66,6 +66,9 @@ public final class KeyValueStore implements AutoCloseable {
     /** Bo dem timestamp tang nghiem ngat cho cac lan ghi. */
     private final AtomicLong lastTimestamp = new AtomicLong();
 
+    /** Bo dem so ban sao replication/recover bi bo qua vi da qua han TTL. */
+    private final AtomicLong droppedExpiredReplicas = new AtomicLong();
+
     private final long ttlMillis;
     private final int maxEntries;
     private final LongSupplier clock;
@@ -75,8 +78,10 @@ public final class KeyValueStore implements AutoCloseable {
         this(ttlSeconds, maxEntries, System::currentTimeMillis, true);
     }
 
-    /** Cho test truyen dong ho gia de kiem tra TTL ma khong phai sleep. */
-    KeyValueStore(long ttlSeconds, int maxEntries, LongSupplier clock, boolean startSweeper) {
+    /**
+     * Chỉ dùng cho test: truyền đồng hồ giả để kiểm tra TTL mà không phải sleep.
+     */
+    public KeyValueStore(long ttlSeconds, int maxEntries, LongSupplier clock, boolean startSweeper) {
         if (ttlSeconds <= 0 || maxEntries <= 0) {
             throw new IllegalArgumentException("ttlSeconds va maxEntries phai > 0");
         }
@@ -143,12 +148,34 @@ public final class KeyValueStore implements AutoCloseable {
 
     /**
      * Ghi ban tin replication tu server khac theo co che Last-Write-Wins (LWW).
+     *
+     * TTL cho ban sao duoc tinh tu original_write_timestamp:
+     *   expiry = original_write_timestamp + ttlMillis
+     * Neu expiry <= now(), ban sao da het han tai thoi diem nhan/recover -> bo qua va tra ve false.
+     * Neu timestamp <= 0 (khong co hoac khong hop le), fallback sang legacy (now + ttlMillis) va log warning.
      * Chi cho phep ghi khi timestamp moi lon hon timestamp hien tai cua key
      * va lon hon tombstone (neu co). Neu cu hon hoac bang thi bo qua va tra ve false.
+     *
+     * Luu y: Clock skew giua cac node can duoc kiem soat qua giao thuc dong bo gio (NTP).
      */
     public boolean putReplicated(String key, String value, long timestamp) {
         updateLastTimestamp(timestamp);
         long now = clock.getAsLong();
+
+        long expireAt;
+        if (timestamp <= 0) {
+            LOGGER.warning("Nhan ban tin REPLICATE khong co hoac sai original_write_timestamp (ts="
+                    + timestamp + "), fallback legacy receive time TTL");
+            expireAt = now + ttlMillis;
+        } else {
+            expireAt = timestamp + ttlMillis;
+        }
+
+        if (expireAt <= now) {
+            droppedExpiredReplicas.incrementAndGet();
+            return false;
+        }
+
         boolean[] written = new boolean[1];
 
         map.compute(key, (k, existing) -> {
@@ -172,7 +199,7 @@ public final class KeyValueStore implements AutoCloseable {
             // Ghi de: xoa tombstone (neu co) va tao entry moi
             tombstones.remove(k);
             written[0] = true;
-            return new CacheEntry(value, timestamp, now + ttlMillis, accessCounter.incrementAndGet());
+            return new CacheEntry(value, timestamp, expireAt, accessCounter.incrementAndGet());
         });
 
         if (written[0]) {
@@ -360,6 +387,11 @@ public final class KeyValueStore implements AutoCloseable {
             return -1L;
         }
         return t.timestamp();
+    }
+
+    /** So luong ban sao replication/recover bi bo qua do da het han TTL (metric count_dropped_expired_replicas). */
+    public long droppedExpiredReplicasCount() {
+        return droppedExpiredReplicas.get();
     }
 
     @Override
