@@ -16,10 +16,10 @@ import java.util.List;
 import java.util.logging.Logger;
 
 /**
- * Module 2 - Client ket noi cluster Cache Server qua TCP (Issue #6).
+ * Module 2 - Client ket noi cluster Cache Server qua TCP (Issue #6, #7).
  *
- * Chi gửi toi server chinh; failover bo sung o Issue #7.
- * Moi request mo socket moi, ghi 1 dong UTF-8, doc 1 dong response, dong socket.
+ * Gui toi server chinh cua key; server chinh loi (E004/E006, mat ket noi) thi thu server
+ * du phong 1 lan. Moi request mo socket moi, ghi 1 dong UTF-8, doc 1 dong response, dong socket.
  */
 public class CacheClient {
 
@@ -102,6 +102,10 @@ public class CacheClient {
 
         // Failover: thu server du phong 1 lan duy nhat
         int replica = router.replicaIndex(primary);
+        if (replica == primary) {
+            // Cum 1 server: khong co server du phong, gui lai cung server chi ton them 1 lan timeout
+            return new Response(response, primary, false);
+        }
         ServerAddress replicaAddr = router.server(replica);
         LOGGER.warning("Failover: server chinh " + primaryAddr.host() + ":" + primaryAddr.port()
                 + " tra \"" + response + "\", thu server du phong "

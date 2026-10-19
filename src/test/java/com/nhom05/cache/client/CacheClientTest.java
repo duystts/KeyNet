@@ -281,6 +281,16 @@ class CacheClientTest {
                 "Server tat phai tra E004, nhan: " + response);
     }
 
+    @Test
+    void singleServerDown_noFailoverToItself() {
+        // Cum 1 server: server du phong chinh la no -> khong gui lai lan 2
+        CacheClient one = new CacheClient(List.of(new ServerAddress("127.0.0.1", 1)), 200);
+        CacheClient.Response r = one.send("k", "GET|k");
+        assertTrue(r.line().startsWith("ERROR|E004"), r.line());
+        assertFalse(r.failedOver(), "khong co server du phong thi khong duoc bao la da failover");
+        assertEquals(0, r.servedBy());
+    }
+
     // ------------------------------------------------------------------ Failover (#7)
 
     @Test
