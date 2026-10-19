@@ -163,6 +163,12 @@ class CacheClientTest {
         assertTrue(response.startsWith("ERROR|E002"), "Phai la E002, nhan: " + response);
     }
 
+    @Test
+    void put_valueWithPipe_reportsRealReason() {
+        // Value ngan nhung chua | -> khong duoc bao "Value exceeds max length"
+        assertEquals("ERROR|E003|Value contains '|' or newline", client.put("k", "a|b"));
+    }
+
     // ------------------------------------------------------------------ Response record
 
     @Test

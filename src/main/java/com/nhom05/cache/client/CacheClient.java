@@ -133,13 +133,11 @@ public class CacheClient {
      * @return dong response tu server hoac ERROR|Exxx neu validate that bai
      */
     public String put(String key, String value) {
-        if (!ProtocolParser.isKeyValid(key)) {
-            return ProtocolParser.error(ErrorCode.E002);
+        String error = ProtocolParser.keyError(key);
+        if (error == null) {
+            error = ProtocolParser.valueError(value);
         }
-        if (!ProtocolParser.isValueValid(value)) {
-            return ProtocolParser.error(ErrorCode.E003);
-        }
-        return send(key, ProtocolParser.put(key, value)).line();
+        return error != null ? error : send(key, ProtocolParser.put(key, value)).line();
     }
 
     /**
@@ -148,10 +146,8 @@ public class CacheClient {
      * @return VALUE|... hoac NOTFOUND hoac ERROR|Exxx
      */
     public String get(String key) {
-        if (!ProtocolParser.isKeyValid(key)) {
-            return ProtocolParser.error(ErrorCode.E002);
-        }
-        return send(key, ProtocolParser.get(key)).line();
+        String error = ProtocolParser.keyError(key);
+        return error != null ? error : send(key, ProtocolParser.get(key)).line();
     }
 
     /**
@@ -160,10 +156,8 @@ public class CacheClient {
      * @return OK, NOTFOUND hoac ERROR|Exxx
      */
     public String delete(String key) {
-        if (!ProtocolParser.isKeyValid(key)) {
-            return ProtocolParser.error(ErrorCode.E002);
-        }
-        return send(key, ProtocolParser.delete(key)).line();
+        String error = ProtocolParser.keyError(key);
+        return error != null ? error : send(key, ProtocolParser.delete(key)).line();
     }
 
     /**
