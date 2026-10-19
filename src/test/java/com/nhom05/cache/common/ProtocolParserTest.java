@@ -106,4 +106,16 @@ class ProtocolParserTest {
         assertNull(ProtocolParser.parseReplicate("REPLICATE|DELETE|k"));
         assertNull(ProtocolParser.parseReplicate("REPLICATE|FOO|k|1"));
     }
+
+    @Test
+    void keyAndValueErrorsTellTheRealReason() {
+        assertNull(ProtocolParser.keyError("username"));
+        assertEquals("ERROR|E002|Key is empty", ProtocolParser.keyError(""));
+        assertEquals("ERROR|E002|Key exceeds max length", ProtocolParser.keyError("k".repeat(257)));
+        assertEquals("ERROR|E002|Key contains '|' or newline", ProtocolParser.keyError("a|b"));
+        assertNull(ProtocolParser.valueError(""));
+        assertEquals("ERROR|E003|Value exceeds max length", ProtocolParser.valueError("v".repeat(4097)));
+        assertEquals("ERROR|E003|Value contains '|' or newline", ProtocolParser.valueError("a|b"));
+        assertEquals("ERROR|E003|Value contains '|' or newline", ProtocolParser.valueError("a\nb"));
+    }
 }

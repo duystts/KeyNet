@@ -90,6 +90,25 @@ public final class ProtocolParser {
         return value != null && value.length() <= MAX_VALUE_LENGTH && hasNoSeparator(value);
     }
 
+    /** null neu key hop le, nguoc lai dong ERROR|E002|... ghi dung ly do (rong / qua dai / ky tu cam). */
+    public static String keyError(String key) {
+        if (key == null || key.isEmpty()) {
+            return error(ErrorCode.E002, "Key is empty");
+        }
+        if (key.length() > MAX_KEY_LENGTH) {
+            return error(ErrorCode.E002);
+        }
+        return hasNoSeparator(key) ? null : error(ErrorCode.E002, "Key contains '|' or newline");
+    }
+
+    /** null neu value hop le, nguoc lai dong ERROR|E003|... ghi dung ly do (qua dai / ky tu cam). */
+    public static String valueError(String value) {
+        if (value == null || value.length() > MAX_VALUE_LENGTH) {
+            return error(ErrorCode.E003);
+        }
+        return hasNoSeparator(value) ? null : error(ErrorCode.E003, "Value contains '|' or newline");
+    }
+
     private static boolean hasNoSeparator(String s) {
         return s.indexOf('|') < 0 && s.indexOf('\n') < 0 && s.indexOf('\r') < 0;
     }

@@ -204,6 +204,22 @@ class ReplicationHandlerTest {
     }
 
     @Test
+    void hangDoiGuiCoGioiHanKhiBackupKhongTraLoi() throws Exception {
+        // Backup nhan ket noi nhung khong tra loi -> moi lan gui giu thread toi 2 giay
+        try (ServerSocket mute = new ServerSocket(0);
+             ReplicationHandler h = new ReplicationHandler(primaryStore, 5)) {
+            h.setBackup("127.0.0.1", mute.getLocalPort());
+            long start = System.nanoTime();
+            for (int i = 0; i < 1000; i++) {
+                h.replicatePut("k" + i, "v", i);
+            }
+            long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            assertTrue(ms < 1000, "replicate khong duoc chan khi hang doi day, mat " + ms + "ms");
+            assertTrue(h.pendingSends() <= 5, "hang doi phai bi gioi han, dang co " + h.pendingSends());
+        }
+    }
+
+    @Test
     void replicationVanTuanThuTtlVaLru() throws Exception {
         try (KeyValueStore small = new KeyValueStore(60, 2);
              ReplicationHandler h = new ReplicationHandler(small)) {
@@ -303,5 +319,3 @@ class ReplicationHandlerTest {
         assertEquals(0, recovered, "Khi cac peer chua bat, recover phai an toan tra ve 0");
     }
 }
-
-

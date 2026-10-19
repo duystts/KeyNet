@@ -14,10 +14,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -48,6 +52,12 @@ public final class ReplicationHandler implements AutoCloseable {
     private static final String END = "END";
     private static final int CONNECT_TIMEOUT_MS = 1000;
     private static final int READ_TIMEOUT_MS = 2000;
+    /**
+     * So ban tin cho gui toi da. Server du phong chet (moi lan gui ton toi 1s timeout ket noi)
+     * ma hang doi vo han thi phinh mai theo so lan ghi; vuot gioi han thi bo ban tin,
+     * server du phong se lay lai qua recover khi bat lai.
+     */
+    static final int SEND_QUEUE_CAPACITY = 10_000;
 
     /** Dia chi kenh replication cua server du phong. */
     private record Backup(String host, int port) {
@@ -57,18 +67,25 @@ public final class ReplicationHandler implements AutoCloseable {
     /** null = chua co server du phong (cum 1 server) -> khong gui di dau. */
     private volatile Backup backup;
 
-    private final ExecutorService senderPool;
+    private final ThreadPoolExecutor senderPool;
+    private final AtomicLong droppedSends = new AtomicLong();
     private final ExecutorService listenerPool;
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
 
     /** @param store kho du lieu cua server nay (dung khi nhan replication) */
     public ReplicationHandler(KeyValueStore store) {
+        this(store, SEND_QUEUE_CAPACITY);
+    }
+
+    /** Cho test dat hang doi gui nho. */
+    ReplicationHandler(KeyValueStore store, int sendQueueCapacity) {
         if (store == null) {
             throw new IllegalArgumentException("store khong duoc null");
         }
         this.store = store;
-        this.senderPool = Executors.newFixedThreadPool(2, daemonFactory("repl-sender"));
+        this.senderPool = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(sendQueueCapacity), daemonFactory("repl-sender"));
         this.listenerPool = Executors.newCachedThreadPool(daemonFactory("repl-listener"));
     }
 
@@ -111,9 +128,17 @@ public final class ReplicationHandler implements AutoCloseable {
         }
         try {
             senderPool.execute(() -> sendBlocking(target, line));
-        } catch (RuntimeException e) { // pool da dong
-            LOGGER.log(Level.WARNING, "Khong dua duoc replication vao hang doi: {0}", e.toString());
+        } catch (RejectedExecutionException e) { // hang doi day hoac pool da dong
+            long n = droppedSends.incrementAndGet();
+            if (n == 1 || n % 1000 == 0) { // khong log moi lan, tranh ngap log khi backup chet lau
+                LOGGER.log(Level.WARNING, "Hang doi replication day, da bo {0,number,#} ban tin", n);
+            }
         }
+    }
+
+    /** So ban tin dang cho gui (cho test). */
+    int pendingSends() {
+        return senderPool.getQueue().size();
     }
 
     /** Gui 1 lan duy nhat, doc phan hoi xong moi dong socket. Khong retry. */

@@ -1,6 +1,5 @@
 package com.nhom05.cache.client;
 
-import com.nhom05.cache.common.ErrorCode;
 import com.nhom05.cache.common.ProtocolParser;
 import com.nhom05.cache.common.ServerConfig.ServerAddress;
 
@@ -109,10 +108,12 @@ public class ClientConsole {
                 } else {
                     String key = parts[1];
                     String value = parts[2];
-                    if (!ProtocolParser.isKeyValid(key)) {
-                        out.println(ProtocolParser.error(ErrorCode.E002));
-                    } else if (!ProtocolParser.isValueValid(value)) {
-                        out.println(ProtocolParser.error(ErrorCode.E003));
+                    String error = ProtocolParser.keyError(key);
+                    if (error == null) {
+                        error = ProtocolParser.valueError(value);
+                    }
+                    if (error != null) {
+                        out.println(error);
                     } else {
                         CacheClient.Response resp = client.send(key, ProtocolParser.put(key, value));
                         out.println(formatResponse(resp));
@@ -124,8 +125,9 @@ public class ClientConsole {
                     out.println("Cu phap: GET <key>");
                 } else {
                     String key = parts[1];
-                    if (!ProtocolParser.isKeyValid(key)) {
-                        out.println(ProtocolParser.error(ErrorCode.E002));
+                    String error = ProtocolParser.keyError(key);
+                    if (error != null) {
+                        out.println(error);
                     } else {
                         CacheClient.Response resp = client.send(key, ProtocolParser.get(key));
                         out.println(formatResponse(resp));
@@ -137,8 +139,9 @@ public class ClientConsole {
                     out.println("Cu phap: DELETE <key>");
                 } else {
                     String key = parts[1];
-                    if (!ProtocolParser.isKeyValid(key)) {
-                        out.println(ProtocolParser.error(ErrorCode.E002));
+                    String error = ProtocolParser.keyError(key);
+                    if (error != null) {
+                        out.println(error);
                     } else {
                         CacheClient.Response resp = client.send(key, ProtocolParser.delete(key));
                         out.println(formatResponse(resp));
