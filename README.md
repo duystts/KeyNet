@@ -11,6 +11,9 @@ Nhiều Cache Server nhân bản hoạt động như Key-Value Store; Client dù
 - [Đặc tả giao thức](./docs/Dac-ta-giao-thuc-Nhom05.docx) — format message, mã lỗi, công thức hashing, giao thức replication/heartbeat, cấu trúc package. **Đọc trước khi code.**
 - [Phân công công việc](./docs/Phan-cong-cong-viec-Nhom05.docx) — 5 module, deliverable, mốc thời gian.
 - [Đặc tả triển khai](./docs/DAC_TA_TRIEN_KHAI.md) — tên lớp, hàm public, cổng mạng, định dạng lệnh cho từng Issue. **Đọc phần của mình trước khi làm Issue.**
+- [Kịch bản demo đồ án](./docs/KICH_BAN_DEMO.md) — kịch bản từng bước trình diễn trước giảng viên (vấn đáp, failover, recovery, load test) (#19).
+- [Báo cáo đồ án](./docs/BAO_CAO_DO_AN.md) — bản báo cáo đồ án hoàn chỉnh môn Lập trình Mạng máy tính (#19).
+- [Báo cáo đo tải](./docs/load_test_report.txt) — kết quả đo tải thực tế 2,000 req trên cụm 3 server (#17).
 
 ## Cấu trúc package
 
@@ -88,10 +91,11 @@ Thứ tự làm các Issue: xem Issue **📌 Lộ trình** (#27). Label `sẵn s
 
 ## Bảng đóng góp
 
-| MSSV | Họ và tên | Công việc đã thực hiện | Pull Requests |
-|---|---|---|---|
-| | Phạm Anh Duy (nhóm trưởng) | | |
-| | Ngô Mạnh Hùng | | |
-| | Nguyễn Tiến Đức | | |
-| | Nguyễn Trần Tuấn Anh | | |
-| | Nguyễn Văn Nhật | | |
+| MSSV | Họ và tên | Module & Công việc đã thực hiện | Pull Requests |
+|:---:|:---|:---|:---|
+| 2380600371 | **Phạm Anh Duy** *(Nhóm trưởng)* | **Module 1**: Core Cache Server, KeyValueStore, package common, TTL, LRU, tích hợp cụm | #21, #22, #23, #24, #26, #29, #31, #32, #40, #44, #48 |
+| 2380600773 | **Ngô Mạnh Hùng** | **Module 2**: CacheClient, HashRouter (`\|hash\| mod N`), Failover tự động, ClientConsole | #33, #34, #38 |
+| 2380600542 | **Nguyễn Tiến Đức** | **Module 3**: ReplicationHandler, Last-Write-Wins timestamp, SYNC recovery khi node sống lại | #37, #42, #43, #49, #51 |
+| 238060... | **Nguyễn Trần Tuấn Anh** | **Module 4**: RegistryServer, Heartbeat định kỳ 3s, Health check phát hiện node chết sau 9s | #35 |
+| 2380601556 | **Nguyễn Văn Nhật** | **Module 5**: Swing GUI Dashboard (#14), Client GUI (#15), Nút tắt/bật node thật (#16), LoadTester (#17), Kịch bản demo & Báo cáo đồ án (#19) | #50, #52, #53, #54 |
+
