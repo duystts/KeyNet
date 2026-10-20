@@ -11,6 +11,9 @@ Nhiều Cache Server nhân bản hoạt động như Key-Value Store; Client dù
 - [Đặc tả giao thức](./docs/Dac-ta-giao-thuc-Nhom05.docx) — format message, mã lỗi, công thức hashing, giao thức replication/heartbeat, cấu trúc package. **Đọc trước khi code.**
 - [Phân công công việc](./docs/Phan-cong-cong-viec-Nhom05.docx) — 5 module, deliverable, mốc thời gian.
 - [Đặc tả triển khai](./docs/DAC_TA_TRIEN_KHAI.md) — tên lớp, hàm public, cổng mạng, định dạng lệnh cho từng Issue. **Đọc phần của mình trước khi làm Issue.**
+- [Kịch bản demo đồ án](./docs/KICH_BAN_DEMO.md) — kịch bản từng bước trình diễn trước giảng viên (vấn đáp, failover, recovery, load test) (#19).
+- [Báo cáo đồ án](./docs/BAO_CAO_DO_AN.md) — bản báo cáo đồ án hoàn chỉnh môn Lập trình Mạng máy tính (#19).
+- [Báo cáo đo tải](./docs/load_test_report.txt) — kết quả đo tải thực tế 2,000 req trên cụm 3 server (#17).
 
 ## Cấu trúc package
 
@@ -95,3 +98,4 @@ Thứ tự làm các Issue: xem Issue **📌 Lộ trình** (#27). Label `sẵn s
 | | Nguyễn Tiến Đức | | |
 | | Nguyễn Trần Tuấn Anh | | |
 | | Nguyễn Văn Nhật | | |
+
