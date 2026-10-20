@@ -128,6 +128,14 @@ public final class RegistryServer {
     }
 
     /**
+     * Thoi diem heartbeat cuoi cung (epoch millis) cua server index, hoac -1 neu chua co.
+     */
+    long lastHeartbeatOf(int index) {
+        NodeInfo node = nodes.get(index);
+        return node == null ? -1 : node.lastHeartbeat;
+    }
+
+    /**
      * Cho phep test cho toi khi server da san sang lang nghe.
      */
     public boolean awaitListening(long timeoutMs) throws InterruptedException {
