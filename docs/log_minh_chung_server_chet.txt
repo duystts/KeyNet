@@ -1,0 +1,54 @@
+[2026-10-20 17:15:39.067] === LOG MINH CHUNG: REGISTRY PHAT HIEN SERVER CHET VA PHUC HOI ===
+[2026-10-20 17:15:39.073] Nhom 05 — Phu trach: Nguyen Tran Tuan Anh
+[2026-10-20 17:15:39.073] 
+[2026-10-20 17:15:39.073] --- BUOC 1: Khoi dong RegistryServer tai port 6000 ---
+[2026-10-20 17:15:39.100] RegistryServer da san sang tai port 6000
+[2026-10-20 17:15:39.100] 
+[2026-10-20 17:15:39.100] --- BUOC 2: Khoi dong 3 Cache Server (#0, #1, #2) ---
+[2026-10-20 17:15:39.136] CacheServer #0 da khoi dong tai port 5001 (replication port 6001)
+[2026-10-20 17:15:39.145] CacheServer #1 da khoi dong tai port 5002 (replication port 6002)
+[2026-10-20 17:15:39.150] CacheServer #2 da khoi dong tai port 5003 (replication port 6003)
+[2026-10-20 17:15:39.150] Cho 5 giay de heartbeat gui ve Registry...
+[2026-10-20 17:15:44.152] 
+[2026-10-20 17:15:44.152] --- BUOC 3: Kiem tra trang thai cac server TRUOC khi tat ---
+[2026-10-20 17:15:44.155]   Server #0: UP
+[2026-10-20 17:15:44.156]   Server #1: UP
+[2026-10-20 17:15:44.157]   Server #2: UP
+[2026-10-20 17:15:44.157] 
+[2026-10-20 17:15:44.157] --- BUOC 4: Tat CacheServer #1 (port 5002) ---
+[2026-10-20 17:15:44.157] Dong CacheNode #1...
+[2026-10-20 17:15:44.158] CacheServer #1 da tat.
+[2026-10-20 17:15:44.158] 
+[2026-10-20 17:15:44.158] --- BUOC 5: Cho Registry phat hien server #1 chet (timeout 9 giay) ---
+[2026-10-20 17:15:45.164]   [+1001ms] STATUS server #1 = UP
+[2026-10-20 17:15:46.167]   [+2009ms] STATUS server #1 = UP
+[2026-10-20 17:15:47.168]   [+3010ms] STATUS server #1 = UP
+[2026-10-20 17:15:48.169]   [+4011ms] STATUS server #1 = UP
+[2026-10-20 17:15:49.171]   [+5012ms] STATUS server #1 = UP
+[2026-10-20 17:15:50.173]   [+6015ms] STATUS server #1 = UP
+[2026-10-20 17:15:51.176]   [+7018ms] STATUS server #1 = DOWN
+[2026-10-20 17:15:51.178] >>> Registry da phat hien server #1 CHET sau 7018ms (~ 7 giay) <<<
+[2026-10-20 17:15:51.178] 
+[2026-10-20 17:15:51.178] Trang thai cac server SAU khi server #1 chet:
+[2026-10-20 17:15:51.179]   Server #0: UP
+[2026-10-20 17:15:51.179]   Server #1: DOWN
+[2026-10-20 17:15:51.180]   Server #2: UP
+[2026-10-20 17:15:51.180] 
+[2026-10-20 17:15:51.180] --- BUOC 6: Bat lai CacheServer #1 ---
+[2026-10-20 17:15:51.185] CacheServer #1 da khoi dong lai.
+[2026-10-20 17:15:51.185] 
+[2026-10-20 17:15:51.185] --- BUOC 7: Cho Registry phat hien server #1 phuc hoi ---
+[2026-10-20 17:15:52.186]   [+1001ms] STATUS server #1 = UP
+[2026-10-20 17:15:52.187] >>> Registry da phat hien server #1 PHUC HOI sau 1001ms (~ 1 giay) <<<
+[2026-10-20 17:15:52.187] 
+[2026-10-20 17:15:52.187] --- BUOC 8: Trang thai cuoi cung ---
+[2026-10-20 17:15:52.187]   Server #0: UP
+[2026-10-20 17:15:52.188]   Server #1: UP
+[2026-10-20 17:15:52.188]   Server #2: UP
+[2026-10-20 17:15:52.188] 
+[2026-10-20 17:15:52.188] --- BUOC 9: So lieu thong ke tu Registry (STATS) ---
+[2026-10-20 17:15:52.197]   Server #0: UP, keyCount=0, requestCount=0
+[2026-10-20 17:15:52.197]   Server #1: UP, keyCount=0, requestCount=0
+[2026-10-20 17:15:52.197]   Server #2: UP, keyCount=0, requestCount=0
+[2026-10-20 17:15:52.197] 
+[2026-10-20 17:15:52.197] === KET THUC LOG MINH CHUNG ===
