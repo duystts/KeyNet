@@ -1,10 +1,10 @@
 package com.nhom05.cache.registry;
 
+import com.nhom05.cache.client.CacheClient;
 import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.server.CacheNode;
 
 import java.io.IOException;
-
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,7 +12,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.logging.ConsoleHandler;
+import java.util.logging.Formatter;
+import java.util.logging.Handler;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 
@@ -39,25 +42,31 @@ public final class LogMinhChung {
     private static final int TARGET_SERVER = 1;
 
     public static void main(String[] args) throws Exception {
-        // Bat log cua RegistryServer de thay dong [DEAD SERVER DETECTED] va [SERVER RECOVERED]
-        setupLogging();
-
         StringBuilder log = new StringBuilder();
+
+        // Bat log cua com.nhom05.cache.registry de ghi truc tiep cac dong
+        // [DEAD SERVER DETECTED] va [SERVER RECOVERED] vao file minh chung
+        setupLogging(log);
+
         log(log, "=== LOG MINH CHUNG: REGISTRY PHAT HIEN SERVER CHET VA PHUC HOI ===");
-        log(log, "Nhom 05 — Phu trach: Nguyen Tran Tuan Anh");
+        log(log, "Nhom 05 - Phu trach: Nguyen Tran Tuan Anh");
         log(log, "");
 
+        // Doc cau hinh Registry tu config/config.properties
+        ServerConfig baseConfig = ServerConfig.load("config/config.properties");
+        int registryPort = baseConfig.registry().port();
+        String registryHost = baseConfig.registry().host();
+
         // --- Buoc 1: Khoi dong Registry ---
-        log(log, "--- BUOC 1: Khoi dong RegistryServer tai port 6000 ---");
-        RegistryServer registry = new RegistryServer(6000);
+        log(log, "--- BUOC 1: Khoi dong RegistryServer tai port " + registryPort + " (tu config) ---");
+        RegistryServer registry = new RegistryServer(registryPort);
         registry.start();
         registry.awaitListening(3000);
         log(log, "RegistryServer da san sang tai port " + registry.localPort());
 
-        // --- Buoc 2: Khoi dong 3 Cache Server ---
+        // --- Buoc 2: Khoi dong 3 Cache Server (#0, #1, #2) ---
         log(log, "");
         log(log, "--- BUOC 2: Khoi dong 3 Cache Server (#0, #1, #2) ---");
-        ServerConfig baseConfig = ServerConfig.load("config/config.properties");
         CacheNode[] nodes = new CacheNode[3];
         for (int i = 0; i < 3; i++) {
             ServerConfig cfg = baseConfig.withServerIndex(i);
@@ -67,27 +76,52 @@ public final class LogMinhChung {
                     + " (replication port " + cfg.replicationPort(i) + ")");
         }
 
-        // Cho heartbeat gui ve Registry (3 giay)
-        log(log, "Cho 5 giay de heartbeat gui ve Registry...");
-        Thread.sleep(5000);
+        // --- Buoc 2b: Ghi mot so du lieu mau qua CacheClient truoc khi tat ---
+        log(log, "");
+        log(log, "--- BUOC 2b: Ghi du lieu mau qua CacheClient (PUT cac key) ---");
+        CacheClient cacheClient = new CacheClient(baseConfig.servers());
+        String[][] sampleData = {
+                {"key-0", "Value for node 0"},
+                {"key-1", "Value for node 1"},
+                {"key-2", "Value for node 2"},
+                {"user:alice", "Alice Profile Data"},
+                {"user:bob", "Bob Profile Data"},
+                {"user:charlie", "Charlie Profile Data"}
+        };
+        for (String[] entry : sampleData) {
+            String k = entry[0];
+            String v = entry[1];
+            String res = cacheClient.put(k, v);
+            int primary = cacheClient.router().primaryIndex(k);
+            log(log, "  PUT key=\"" + k + "\" (primary server #" + primary + ") -> " + res);
+        }
+
+        // Cho heartbeat gui so lieu thong ke ve Registry (it nhat 1 chu ky 3s)
+        log(log, "Cho 4 giay de heartbeat cap nhat so lieu (keyCount, requestCount) ve Registry...");
+        Thread.sleep(4000);
 
         // --- Buoc 3: Kiem tra trang thai truoc khi tat ---
         log(log, "");
         log(log, "--- BUOC 3: Kiem tra trang thai cac server TRUOC khi tat ---");
-        RegistryClient client = new RegistryClient("127.0.0.1", 6000);
+        RegistryClient client = new RegistryClient(registryHost, registryPort);
         logAllStatus(log, client);
 
         // --- Buoc 4: Tat server #1 ---
         log(log, "");
         log(log, "--- BUOC 4: Tat CacheServer #" + TARGET_SERVER + " (port "
                 + baseConfig.servers().get(TARGET_SERVER).port() + ") ---");
+        long lastHbBeforeStop = registry.lastHeartbeatOf(TARGET_SERVER);
+        long timeSinceLastHb = System.currentTimeMillis() - lastHbBeforeStop;
         log(log, "Dong CacheNode #" + TARGET_SERVER + "...");
         nodes[TARGET_SERVER].close();
         log(log, "CacheServer #" + TARGET_SERVER + " da tat.");
+        log(log, "  (Thoi diem heartbeat cuoi ghi nhan tai Registry: "
+                + timeSinceLastHb + "ms truoc luc tat)");
 
         // --- Buoc 5: Cho Registry phat hien server chet (~9 giay) ---
         log(log, "");
         log(log, "--- BUOC 5: Cho Registry phat hien server #" + TARGET_SERVER + " chet (timeout 9 giay) ---");
+        log(log, "  Giai thich: Timeout 9s tinh tu heartbeat cuoi (chu ky 3s), khong tinh tu luc tat node.");
         long startWait = System.currentTimeMillis();
         boolean detected = false;
         // Kiem tra moi 1 giay, toi da 20 giay
@@ -95,10 +129,14 @@ public final class LogMinhChung {
             Thread.sleep(1000);
             String status = client.status(TARGET_SERVER);
             long elapsed = System.currentTimeMillis() - startWait;
-            log(log, "  [+" + elapsed + "ms] STATUS server #" + TARGET_SERVER + " = " + status);
+            long totalSinceHb = (lastHbBeforeStop > 0) ? (System.currentTimeMillis() - lastHbBeforeStop) : elapsed;
+            log(log, "  [+" + elapsed + "ms tu luc tat | " + totalSinceHb + "ms tu heartbeat cuoi] STATUS server #"
+                    + TARGET_SERVER + " = " + status);
             if ("DOWN".equals(status)) {
                 log(log, ">>> Registry da phat hien server #" + TARGET_SERVER
-                        + " CHET sau " + elapsed + "ms (~ " + (elapsed / 1000) + " giay) <<<");
+                        + " CHET sau " + elapsed + "ms tu luc tat (~" + (elapsed / 1000)
+                        + " giay, tuong ung " + totalSinceHb + "ms ~" + (totalSinceHb / 1000)
+                        + " giay tu heartbeat cuoi - dung dac ta 9s) <<<");
                 detected = true;
                 break;
             }
@@ -106,6 +144,10 @@ public final class LogMinhChung {
         if (!detected) {
             log(log, "!!! THAT BAI: Registry khong phat hien server chet trong 20 giay !!!");
         }
+
+        // Cho them 3 giay de health checker (chu ky 1s) quet va in [DEAD SERVER DETECTED]
+        log(log, "Doi 3 giay de health checker quet va ghi nhan [DEAD SERVER DETECTED]...");
+        Thread.sleep(3000);
 
         // Log trang thai cac server sau khi 1 server chet
         log(log, "");
@@ -146,6 +188,9 @@ public final class LogMinhChung {
         log(log, "--- BUOC 8: Trang thai cuoi cung ---");
         logAllStatus(log, client);
 
+        // Cho 1.5s de Registry cap nhat day du so lieu STATS tu heartbeat moi
+        Thread.sleep(1500);
+
         // --- Buoc 9: STATS cua Registry ---
         log(log, "");
         log(log, "--- BUOC 9: So lieu thong ke tu Registry (STATS) ---");
@@ -178,8 +223,8 @@ public final class LogMinhChung {
         System.exit(0);
     }
 
-    /** Ghi 1 dong log co timestamp vao StringBuilder va in ra console. */
-    private static void log(StringBuilder sb, String message) {
+    /** Ghi 1 dong log co timestamp vao StringBuilder va in ra console (thread-safe). */
+    private static synchronized void log(StringBuilder sb, String message) {
         String timestamp = LocalDateTime.now().format(FMT);
         String line = "[" + timestamp + "] " + message;
         sb.append(line).append(System.lineSeparator());
@@ -194,8 +239,8 @@ public final class LogMinhChung {
         }
     }
 
-    /** Bat log cua RegistryServer len console de thay [DEAD SERVER DETECTED] va [SERVER RECOVERED]. */
-    private static void setupLogging() {
+    /** Bat log cua com.nhom05.cache.registry ghi truc tiep vao chuoi log va console. */
+    private static void setupLogging(StringBuilder log) {
         Logger rootLogger = Logger.getLogger("");
         rootLogger.setLevel(Level.INFO);
         for (var h : rootLogger.getHandlers()) {
@@ -204,5 +249,35 @@ public final class LogMinhChung {
                 h.setFormatter(new SimpleFormatter());
             }
         }
+
+        Logger regLogger = Logger.getLogger("com.nhom05.cache.registry");
+        regLogger.setLevel(Level.INFO);
+        regLogger.setUseParentHandlers(false);
+
+        Formatter fmt = new Formatter() {
+            @Override
+            public String format(LogRecord record) {
+                return formatMessage(record);
+            }
+        };
+
+        Handler registryHandler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (!isLoggable(record)) {
+                    return;
+                }
+                String msg = fmt.format(record);
+                log(log, msg);
+            }
+
+            @Override
+            public void flush() {}
+
+            @Override
+            public void close() throws SecurityException {}
+        };
+        registryHandler.setLevel(Level.INFO);
+        regLogger.addHandler(registryHandler);
     }
 }
