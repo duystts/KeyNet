@@ -35,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class LoadTester {
 
+    public static final String DEFAULT_TESTER_INFO = "Nguyen Van Nhat (MSSV: 2380601556)";
+
     /**
      * Cau hinh tham so do tai.
      *
@@ -43,13 +45,17 @@ public class LoadTester {
      * @param putPercentage      ty le request PUT (0 - 100), con lai la GET
      * @param keyCount           so luong key phan tan de test (>= 1)
      * @param reportPath         duong dan file bao cao (mac dinh docs/load_test_report.txt)
+     * @param testerInfo         thong tin nguoi kiem thu (mac dinh Nguyen Van Nhat)
+     * @param useConnectionPool  su dung connection pool de tai su dung ket noi
      */
     public record LoadTestConfig(
             int threads,
             int requestsPerThread,
             int putPercentage,
             int keyCount,
-            String reportPath
+            String reportPath,
+            String testerInfo,
+            boolean useConnectionPool
     ) {
         public LoadTestConfig {
             if (threads < 1) {
@@ -67,10 +73,21 @@ public class LoadTester {
             if (reportPath == null || reportPath.trim().isEmpty()) {
                 reportPath = "docs/load_test_report.txt";
             }
+            if (testerInfo == null || testerInfo.trim().isEmpty()) {
+                testerInfo = DEFAULT_TESTER_INFO;
+            }
+        }
+
+        public LoadTestConfig(int threads, int requestsPerThread, int putPercentage, int keyCount, String reportPath) {
+            this(threads, requestsPerThread, putPercentage, keyCount, reportPath, DEFAULT_TESTER_INFO, true);
+        }
+
+        public LoadTestConfig(int threads, int requestsPerThread, int putPercentage, int keyCount, String reportPath, String testerInfo) {
+            this(threads, requestsPerThread, putPercentage, keyCount, reportPath, testerInfo, true);
         }
 
         public static LoadTestConfig defaultConfig() {
-            return new LoadTestConfig(10, 50, 50, 20, "docs/load_test_report.txt");
+            return new LoadTestConfig(10, 50, 50, 20, "docs/load_test_report.txt", DEFAULT_TESTER_INFO, true);
         }
 
         public int totalRequests() {
@@ -169,6 +186,14 @@ public class LoadTester {
         // Danh sach luu thoi gian do tre tung request (nanoseconds)
         List<Long> latenciesNanos = Collections.synchronizedList(new ArrayList<>(totalRequests));
 
+        CacheClient testClient = client;
+        boolean ownClient = false;
+        if (config.useConnectionPool() && !client.isPooled()) {
+            testClient = CacheClient.pooled(client.router().servers(), CacheClient.TIMEOUT_MS, Math.max(threads, 20));
+            ownClient = true;
+        }
+        final CacheClient activeClient = testClient;
+
         ExecutorService executor = Executors.newFixedThreadPool(threads);
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threads);
@@ -210,9 +235,9 @@ public class LoadTester {
                     try {
                         if (isPut) {
                             String value = "val_t" + tId + "_r" + reqIdx + "_" + System.currentTimeMillis();
-                            response = client.send(key, ProtocolParser.put(key, value));
+                            response = activeClient.send(key, ProtocolParser.put(key, value));
                         } else {
-                            response = client.send(key, ProtocolParser.get(key));
+                            response = activeClient.send(key, ProtocolParser.get(key));
                         }
                     } catch (Exception e) {
                         response = null;
@@ -267,6 +292,9 @@ public class LoadTester {
         }
         long testEndTime = System.nanoTime();
         executor.shutdown();
+        if (ownClient) {
+            activeClient.close();
+        }
 
         long durationMs = Math.max(1, (testEndTime - testStartTime) / 1_000_000);
         int finalCompleted = completedCount.get();
@@ -402,7 +430,7 @@ public class LoadTester {
         sb.append("================================================================================\n");
         sb.append("Thoi gian tao bao cao   : ").append(timeStr).append("\n");
         sb.append("Phien ban he thong      : KeyNet 1.0-SNAPSHOT (Nhom 05)\n");
-        sb.append("Kiem thu vien           : Nguyen Van Nhat (MSSV: 2380601556)\n");
+        sb.append("Kiem thu vien           : ").append(config.testerInfo()).append("\n");
         sb.append("Issue trien khai        : #17 Load tester\n");
         sb.append("\n");
 
@@ -415,6 +443,8 @@ public class LoadTester {
         sb.append(String.format(Locale.US, "- Ty le workload                         : %d%% PUT / %d%% GET\n",
                 config.putPercentage(), 100 - config.putPercentage()));
         sb.append(String.format(Locale.US, "- Pham vi key phan tan (Key count)       : %d keys\n", config.keyCount()));
+        sb.append(String.format(Locale.US, "- Che do ket noi                         : %s\n",
+                config.useConnectionPool() ? "Connection Pool (Keep-Alive Reuse)" : "Connection-per-request (Standard)"));
         sb.append("- Danh sach Cache Server muc tieu        :\n");
         if (servers != null && !servers.isEmpty()) {
             for (int i = 0; i < servers.size(); i++) {

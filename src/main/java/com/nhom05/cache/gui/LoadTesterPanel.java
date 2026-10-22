@@ -48,6 +48,8 @@ public class LoadTesterPanel extends JPanel {
     private JComboBox<String> comboWorkload;
     private JSpinner spinnerKeyCount;
     private JTextField txtReportPath;
+    private JComboBox<String> cmbTester;
+    private JCheckBox chkUsePool;
 
     // Action buttons
     private JButton btnStart;
@@ -175,7 +177,39 @@ public class LoadTesterPanel extends JPanel {
         formGrid.add(spinnerKeyCount);
         formGrid.add(txtReportPath);
 
-        panel.add(formGrid, BorderLayout.CENTER);
+        JPanel centerConfig = new JPanel(new BorderLayout(0, 8));
+        centerConfig.setOpaque(false);
+        centerConfig.add(formGrid, BorderLayout.NORTH);
+
+        JPanel extraOptions = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 4));
+        extraOptions.setOpaque(false);
+
+        JLabel lblTester = new JLabel("Người kiểm thử:");
+        lblTester.setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        String[] groupMembers = {
+                "Nguyen Van Nhat (MSSV: 2380601556)",
+                "Pham Anh Duy (MSSV: 2380600371)",
+                "Ngo Manh Hung (MSSV: 2380600773)",
+                "Nguyen Tien Duc (MSSV: 2380600542)",
+                "Nguyen Tran Tuan Anh (MSSV: 2380601323)"
+        };
+        cmbTester = new JComboBox<>(groupMembers);
+        cmbTester.setEditable(true);
+        cmbTester.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cmbTester.setPreferredSize(new Dimension(310, 26));
+
+        chkUsePool = new JCheckBox("Sử dụng Connection Pool (Keep-Alive) [Khuyến nghị để đạt 100% tải cao]", true);
+        chkUsePool.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        chkUsePool.setForeground(new Color(21, 101, 192));
+        chkUsePool.setOpaque(false);
+
+        extraOptions.add(lblTester);
+        extraOptions.add(cmbTester);
+        extraOptions.add(chkUsePool);
+
+        centerConfig.add(extraOptions, BorderLayout.CENTER);
+        panel.add(centerConfig, BorderLayout.CENTER);
 
         // Buttons Bar
         JPanel btnBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
@@ -357,7 +391,15 @@ public class LoadTesterPanel extends JPanel {
         else if (selectedIndex == 2) putPct = 0;
         else if (selectedIndex == 3) putPct = 20;
 
-        LoadTestConfig config = new LoadTestConfig(threads, reqs, putPct, keyCount, reportPath);
+        String testerInfo = cmbTester != null && cmbTester.getSelectedItem() != null
+                ? cmbTester.getSelectedItem().toString().trim()
+                : LoadTester.DEFAULT_TESTER_INFO;
+        if (testerInfo.isEmpty()) {
+            testerInfo = LoadTester.DEFAULT_TESTER_INFO;
+        }
+        boolean usePool = chkUsePool != null && chkUsePool.isSelected();
+
+        LoadTestConfig config = new LoadTestConfig(threads, reqs, putPct, keyCount, reportPath, testerInfo, usePool);
 
         cancelFlag.set(false);
         setFormEnabled(false);
@@ -367,7 +409,8 @@ public class LoadTesterPanel extends JPanel {
 
         txtLogArea.setText("");
         appendLog("Bắt đầu kiểm thử tải với: " + threads + " luồng, " + reqs + " requests/luồng (Tổng: "
-                + config.totalRequests() + " requests, Workload: " + putPct + "% PUT / " + (100 - putPct) + "% GET)...");
+                + config.totalRequests() + " requests, Workload: " + putPct + "% PUT / " + (100 - putPct) + "% GET)"
+                + ", Kiểm thử viên: " + testerInfo + ", Pool: " + (usePool ? "BẬT" : "TẮT") + ")...");
 
         final LoadTestConfig finalConfig = config;
 
@@ -479,6 +522,8 @@ public class LoadTesterPanel extends JPanel {
         comboWorkload.setEnabled(enabled);
         spinnerKeyCount.setEnabled(enabled);
         txtReportPath.setEnabled(enabled);
+        if (cmbTester != null) cmbTester.setEnabled(enabled);
+        if (chkUsePool != null) chkUsePool.setEnabled(enabled);
         btnStart.setEnabled(enabled);
         btnOpenReport.setEnabled(enabled);
     }
@@ -496,4 +541,6 @@ public class LoadTesterPanel extends JPanel {
     public JTextArea txtLogArea() { return txtLogArea; }
     public JSpinner spinnerThreads() { return spinnerThreads; }
     public JSpinner spinnerRequestsPerThread() { return spinnerRequestsPerThread; }
+    public JComboBox<String> cmbTester() { return cmbTester; }
+    public JCheckBox chkUsePool() { return chkUsePool; }
 }

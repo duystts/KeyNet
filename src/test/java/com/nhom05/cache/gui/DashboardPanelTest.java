@@ -63,6 +63,10 @@ class DashboardPanelTest {
 
         assertNotNull(panel.btnCrashNode());
         assertNotNull(panel.btnRestartNode());
+        assertNotNull(panel.btnStartCluster());
+        assertNotNull(panel.btnStopCluster());
+        assertEquals("🚀 Khởi Động Cụm", panel.btnStartCluster().getText());
+        assertEquals("🛑 Tắt Tất Cả Node", panel.btnStopCluster().getText());
         assertNotNull(panel.lblSelectedNodeInfo());
 
         List<NodeDisplayInfo> nodes = List.of(

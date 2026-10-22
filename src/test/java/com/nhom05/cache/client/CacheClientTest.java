@@ -411,6 +411,18 @@ class CacheClientTest {
                 "Ca 2 server tat phai tra ERROR|E004, nhan: " + response);
     }
 
+    @Test
+    void testPooledClientOperations() {
+        int port = server.localPort();
+        try (CacheClient pooledClient = CacheClient.pooled(List.of(new ServerAddress("127.0.0.1", port)), 2000, 5)) {
+            assertTrue(pooledClient.isPooled());
+            assertEquals("OK", pooledClient.put("k1", "v1"));
+            assertEquals("VALUE|v1", pooledClient.get("k1"));
+            assertEquals("OK", pooledClient.delete("k1"));
+            assertEquals("NOTFOUND", pooledClient.get("k1"));
+        }
+    }
+
     // ------------------------------------------------------------------ helper
 
     /** Bat 1 CacheServer that voi port 0, doi den khi san sang. */
