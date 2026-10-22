@@ -22,7 +22,7 @@
 | 1 | **Phạm Anh Duy** *(Nhóm trưởng)* | 2380600371 | **Module 1**: Core Cache Server & Common Package | 100% |
 | 2 | **Ngô Mạnh Hùng** | 2380600773 | **Module 2**: Client Library, Hashing Router & Failover | 100% |
 | 3 | **Nguyễn Tiến Đức** | 2380600542 | **Module 3**: Data Replication, Consistency & Recovery | 100% |
-| 4 | **Nguyễn Trần Tuấn Anh** | 238060... | **Module 4**: Registry Server & Health Check Monitoring | 100% |
+| 4 | **Nguyễn Trần Tuấn Anh** | 2380600068 | **Module 4**: Registry Server & Health Check Monitoring | 100% |
 | 5 | **Nguyễn Văn Nhật** | 2380601556 | **Module 5**: Swing GUI, Node Control, Load Tester & Báo cáo đồ án | 100% |
 
 ---

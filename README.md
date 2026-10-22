@@ -91,11 +91,12 @@ Thứ tự làm các Issue: xem Issue **📌 Lộ trình** (#27). Label `sẵn s
 
 ## Bảng đóng góp
 
+Ghi theo các Pull Request đã merge vào `main` (mỗi PR có `Closes #<issue>`).
+
 | MSSV | Họ và tên | Công việc đã thực hiện | Pull Requests |
 |---|---|---|---|
-| | Phạm Anh Duy (nhóm trưởng) | | |
-| | Ngô Mạnh Hùng | | |
-| | Nguyễn Tiến Đức | | |
-| | Nguyễn Trần Tuấn Anh | | |
-| | Nguyễn Văn Nhật | | |
-
+| 2380600371 | Phạm Anh Duy (nhóm trưởng) | Module 1: khung dự án Maven (#1), package `common` (#2), `KeyValueStore` TTL + LRU (#3), `CacheServer` TCP (#4); đặc tả triển khai (#25); workflow tự đổi label theo Lộ trình (#28); sửa `ReplicationHandler` khớp đặc tả (#40); tích hợp cụm: replication + phục hồi + heartbeat vào `CacheServer`, lệnh `SHUTDOWN`, test tích hợp cả cụm (#13); rà soát và sửa lỗi nhỏ (#47); bảng đóng góp (#20) | #21, #22, #23, #24, #26, #29, #31, #32, #41, #44, #48 |
+| 2380600773 | Ngô Mạnh Hùng | Module 2: `HashRouter` chọn server chính / dự phòng (#5), `CacheClient` (#6), failover tự động + `ClientConsole` (#7) | #33, #34, #38 |
+| 2380600542 | Nguyễn Tiến Đức | Module 3: `ReplicationHandler` gửi `REPLICATE` + listener (#8), last-write-wins theo timestamp + tombstone (#9), phục hồi bằng `SYNC` khi server bật lại (#10); ghi qua failover gửi về server chính, `SYNC` kèm tombstone (#45); TTL bản sao tính theo lần ghi gốc (#46) | #37, #42, #43, #49, #51 |
+| 2380600068 | Nguyễn Trần Tuấn Anh | Module 4: `RegistryServer` + `RegistryClient` (#11), health check 9 giây + `HeartbeatSender` (#12); log minh chứng Registry phát hiện server chết / phục hồi (#18) | #35, #56 |
+| 2380601556 | Nguyễn Văn Nhật | Module 5: GUI Dashboard (#14), GUI Client + Key Explorer (#15), nút tắt / bật server thật (#16), Load tester (#17); kịch bản demo + báo cáo đồ án (#19) | #50, #52, #53, #54, #55 |
