@@ -147,6 +147,27 @@ class CacheServerTest {
     }
 
     @Test
+    void rejectedConnectionsDoNotBlockAcceptThread() throws Exception {
+        // #59: tra E004 khong duoc doi client gui request (truoc day moi ket noi bi tu choi
+        // chan thread accept 100ms -> 20 ket noi im lang lam ket noi sau phai cho ~2s)
+        int port = start(new CacheServer(0, new KeyValueStore(60, 100), 1, 1));
+        List<Socket> silent = new ArrayList<>();
+        try {
+            for (int i = 0; i < 22; i++) {          // 1 chiem thread, 1 xep hang, 20 bi tu choi
+                silent.add(new Socket("127.0.0.1", port));
+            }
+            long start = System.nanoTime();
+            assertEquals("ERROR|E004|Server overloaded", send(port, "GET|x"));
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            assertTrue(ms < 500, "E004 phai tra ngay, mat " + ms + "ms");
+        } finally {
+            for (Socket s : silent) {
+                s.close();
+            }
+        }
+    }
+
+    @Test
     void shutdownReleasesPort() throws Exception {
         int port = startDefault();
         server.shutdown();
