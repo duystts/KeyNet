@@ -62,6 +62,32 @@ class DashboardDataModelTest {
     }
 
     @Test
+    void testWithNodesDownGhiDeTrangThaiRegistryChuaCapNhat() {
+        // #61: vua tat #0 tu GUI, Registry chua het timeout nen van bao UP
+        List<RegistryClient.NodeStat> stats = List.of(
+                new RegistryClient.NodeStat(0, true, 15, 120),
+                new RegistryClient.NodeStat(1, true, 8, 45),
+                new RegistryClient.NodeStat(2, true, 5, 30)
+        );
+        DashboardDataModel model = DashboardDataModel.build(config, stats, true, "127.0.0.1:6000", "12:00:00")
+                .withNodesDown(java.util.Set.of(0));
+
+        NodeDisplayInfo n0 = model.nodes().get(0);
+        assertEquals(DashboardDataModel.STATUS_DOWN, n0.status());
+        assertFalse(n0.isUp());
+        assertTrue(model.nodes().get(1).isUp());
+        assertEquals(2, model.upNodes());
+        assertEquals(13, model.totalKeys());       // 8 + 5, khong tinh node da tat
+        assertEquals(75, model.totalRequests());   // 45 + 30
+        assertEquals("12:00:00", model.lastUpdatedTime());
+
+        // Khong co node nao bi tat -> giu nguyen
+        DashboardDataModel same = DashboardDataModel.build(config, stats, true, "127.0.0.1:6000", "12:00:00")
+                .withNodesDown(java.util.Set.of());
+        assertEquals(3, same.upNodes());
+    }
+
+    @Test
     void testBuildWhenRegistryDisconnected() {
         // Khi Registry mat ket noi, toan bo node phai the hien ro trang thai mat ket noi
         DashboardDataModel model = DashboardDataModel.build(config, List.of(), false, "127.0.0.1:6000", "12:00:00");
