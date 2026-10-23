@@ -24,7 +24,8 @@ import java.util.logging.Logger;
 
 /**
  * Module 1 - Cache Server: lang nghe TCP, moi ket noi giao cho 1 thread trong pool,
- * doc 1 dong request -> tra 1 dong response -> dong ket noi (muc 1, 8 dac ta).
+ * doc 1 dong request -> tra 1 dong response (muc 1, 8 dac ta). Client keep-alive (#58) gui tiep
+ * trong 1s thi dung lai ket noi; im lang hoac hang doi dang co ket noi cho thi dong.
  */
 public final class CacheServer {
 

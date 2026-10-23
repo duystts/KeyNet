@@ -45,7 +45,7 @@ Trong các hệ thống phần mềm quy mô lớn (Large-Scale Web Applications
 Đồ án **"KeyNet - Distributed Cache System"** được xây dựng nhằm mô phỏng và hiện thực hóa một hệ thống lưu trữ Key-Value phân tán hoàn chỉnh từ tầng Socket mạng TCP/IP bằng ngôn ngữ Java SE 17, tích hợp các cơ chế chịu lỗi (Fault Tolerance), phân hoạch dữ liệu (Partitioning / Hashing Router), nhân bản dữ liệu (Data Replication) và giám sát nhịp tim (Heartbeat Monitoring).
 
 ### 1.2. Mục tiêu đề tài
-- **Mục tiêu lý thuyết:** Vận dụng sâu sắc kiến trúc Client-Server, mô hình Socket TCP Blocking I/O kết hợp Thread Pool (mỗi request một kết nối Socket độc lập), giải thuật phân hoạch băm, giải thuật nhất quán dữ liệu (Data Consistency), cơ chế Tombstone và giải quyết xung đột bằng Timestamp (Last-Write-Wins).
+- **Mục tiêu lý thuyết:** Vận dụng sâu sắc kiến trúc Client-Server, mô hình Socket TCP Blocking I/O kết hợp Thread Pool (mặc định mỗi request một kết nối Socket độc lập, tuỳ chọn Connection Pool keep-alive), giải thuật phân hoạch băm, giải thuật nhất quán dữ liệu (Data Consistency), cơ chế Tombstone và giải quyết xung đột bằng Timestamp (Last-Write-Wins).
 - **Mục tiêu thực hành:** Xây dựng hệ thống hoàn chỉnh từ con số không (From scratch), không sử dụng thư viện ngoài; hỗ trợ cụm $N$ node độc lập, có Registry điều phối, thư viện Client thông minh tự động failover, giao diện đồ họa giám sát Swing và bộ công cụ đo tải (Benchmarking).
 
 ---

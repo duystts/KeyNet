@@ -277,7 +277,7 @@ Dưới đây là bộ câu hỏi phản biện chuyên sâu bám sát mã ngu�
 
 ### Câu 5 (Hỏi Nhật - Module 5): Tại sao khi đo tải bằng LoadTester, kết quả của nhóm đạt tới hơn 2,800 req/s? Giao diện GUI có bị treo khi chạy tải lớn không?
 * **Trả lời:**  
-  *"Hệ thống sử dụng mô hình mạng **Socket TCP Blocking I/O kết hợp Thread Pool** (`ThreadPoolExecutor`), mỗi request mở một kết nối Socket độc lập. Đạt được thông lượng ~2,849 req/s là nhờ:  
+  *"Hệ thống sử dụng mô hình mạng **Socket TCP Blocking I/O kết hợp Thread Pool** (`ThreadPoolExecutor`), mặc định mỗi request mở một kết nối Socket độc lập; LoadTester bật Connection Pool (keep-alive) để dùng lại kết nối, socket nào bị server đóng thì client tự mở kết nối mới chứ không failover nhầm. Đạt được thông lượng ~2,849 req/s là nhờ:  
   1. Thao tác xử lý dữ liệu hoàn toàn trên bộ nhớ RAM với độ trễ cực thấp (trung bình 3.00 ms).  
   2. LoadTester mở $N$ luồng worker song song đồng thời kết nối vào cụm 3 server phân tán.  
   3. Giao diện GUI hoàn toàn không bị gián đoạn hay đơ giao diện vì toàn bộ tiến trình đo tải cũng như các cuộc gọi mạng đều chạy trong `SwingWorker` / luồng nền độc lập, kết quả tiến độ và thống kê được chuyển tiếp về Event Dispatch Thread (EDT) thông qua `SwingUtilities.invokeLater()`."*
@@ -286,7 +286,7 @@ Dưới đây là bộ câu hỏi phản biện chuyên sâu bám sát mã ngu�
 
 ## 5. BẢNG CHECKLIST TRƯỚC GIỜ BÁO CÁO
 
-- [x] Đã build thành công bản mới nhất: `mvn clean package` (193 test cases pass).
+- [x] Đã build thành công bản mới nhất: `mvn clean package` (199 test cases pass).
 - [x] Đã chạy thử kịch bản Sập Node Được Chọn trên Server #0 và Bật lại với key `username`.
 - [x] Cụm 3 server và Registry mở đúng các cổng: `5001-5003`, `6000-6003`.
 - [x] File báo cáo đo tải `docs/load_test_report.txt` tồn tại và mang số liệu tải lớn 2,000 req.
