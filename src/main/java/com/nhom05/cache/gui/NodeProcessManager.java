@@ -31,6 +31,8 @@ public final class NodeProcessManager {
 
     /** Luu tru cac tien trinh con duoc bat tu giao dien Dashboard. */
     private static final Map<Integer, Process> MANAGED_PROCESSES = new ConcurrentHashMap<>();
+    /** Luu tru tien trinh Registry Server neu duoc bat tu Dashboard. */
+    private static volatile Process managedRegistryProcess;
 
     private NodeProcessManager() {
     }
@@ -76,6 +78,26 @@ public final class NodeProcessManager {
             return ok;
         } catch (IOException e) {
             LOGGER.log(Level.FINE, "Khong the gui SHUTDOWN toi " + host + ":" + replicationPort + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Kiem tra nhanh xem mot cong TCP co dang duoc lang nghe hay khong.
+     *
+     * @param host      dia chi host
+     * @param port      cong can kiem tra
+     * @param timeoutMs thoi gian cho ket noi
+     * @return true neu ket noi thanh cong (dang lang nghe), false neu bi tu choi hoac timeout
+     */
+    public static boolean isPortListening(String host, int port, int timeoutMs) {
+        if (host == null || port <= 0) {
+            return false;
+        }
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(host, port), Math.max(50, timeoutMs));
+            return true;
+        } catch (IOException e) {
             return false;
         }
     }
@@ -138,7 +160,60 @@ public final class NodeProcessManager {
     }
 
     /**
-     * Dung toan bo cac tien trinh CacheServer da duoc bat tu Dashboard.
+     * Khoi dong Registry Server o tien trinh rieng bang ProcessBuilder.
+     * Log duoc ghi vao logs/registry.log.
+     *
+     * @param port cong Registry (mac dinh 6000)
+     * @return Process dai dien cho tien trinh Registry Server vua duoc tao
+     * @throws IOException neu khong the khoi dong tien trinh
+     */
+    public static Process startRegistry(int port) throws IOException {
+        return startRegistry(port, resolveJavaExecutable(), resolveClassPath());
+    }
+
+    /**
+     * Khoi dong Registry Server voi cac tham so javaCommand va classPath tuy chinh.
+     */
+    public static Process startRegistry(int port, String javaCmd, String classPath) throws IOException {
+        File logDir = new File("logs");
+        if (!logDir.exists()) {
+            logDir.mkdirs();
+        }
+
+        File logFile = new File(logDir, "registry.log");
+        ProcessBuilder pb = new ProcessBuilder(
+                javaCmd,
+                "-cp", classPath,
+                "com.nhom05.cache.registry.RegistryServer",
+                String.valueOf(port)
+        );
+
+        pb.redirectErrorStream(true);
+        pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
+
+        Process process = pb.start();
+        managedRegistryProcess = process;
+        LOGGER.info("Da bat Registry Server (port " + port + ") qua ProcessBuilder (PID: " + process.pid() + ", log: " + logFile.getPath() + ")");
+        return process;
+    }
+
+    /**
+     * Kiem tra tien trinh Registry co dang duoc quan ly va con song hay khong.
+     */
+    public static boolean isRegistryProcessAlive() {
+        Process p = managedRegistryProcess;
+        return p != null && p.isAlive();
+    }
+
+    /**
+     * Lay doi tuong Process cua Registry neu duoc bat tu Dashboard.
+     */
+    public static Process getManagedRegistryProcess() {
+        return managedRegistryProcess;
+    }
+
+    /**
+     * Dung toan bo cac tien trinh CacheServer va Registry da duoc bat tu Dashboard.
      */
     public static void stopAllManagedProcesses() {
         for (Map.Entry<Integer, Process> entry : MANAGED_PROCESSES.entrySet()) {
@@ -148,6 +223,12 @@ public final class NodeProcessManager {
             }
         }
         MANAGED_PROCESSES.clear();
+
+        Process reg = managedRegistryProcess;
+        if (reg != null && reg.isAlive()) {
+            reg.destroy();
+            managedRegistryProcess = null;
+        }
     }
 
     /**
@@ -176,6 +257,27 @@ public final class NodeProcessManager {
      */
     public static String readLastLogLine(int serverIndex) {
         File logFile = new File("logs", "server-" + serverIndex + ".log");
+        if (!logFile.exists() || !logFile.isFile()) {
+            return null;
+        }
+        try {
+            java.util.List<String> lines = java.nio.file.Files.readAllLines(logFile.toPath(), StandardCharsets.UTF_8);
+            for (int i = lines.size() - 1; i >= 0; i--) {
+                String line = lines.get(i).trim();
+                if (!line.isEmpty()) {
+                    return line;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Doc dong cuoi cung khac rong tu file log cua Registry Server (logs/registry.log).
+     */
+    public static String readLastRegistryLogLine() {
+        File logFile = new File("logs", "registry.log");
         if (!logFile.exists() || !logFile.isFile()) {
             return null;
         }

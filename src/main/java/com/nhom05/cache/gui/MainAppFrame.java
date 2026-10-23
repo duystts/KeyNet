@@ -53,6 +53,7 @@ public class MainAppFrame extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 dashboardPanel.stopAutoRefresh();
+                NodeProcessManager.stopAllManagedProcesses();
             }
         });
     }

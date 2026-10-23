@@ -68,6 +68,8 @@ public class DashboardPanel extends JPanel {
     // Issue #16: Nut tat / bat server that (Node Control)
     private final String configPath;
     private JLabel lblSelectedNodeInfo;
+    private JButton btnStartCluster;
+    private JButton btnStopCluster;
     private JButton btnCrashNode;
     private JButton btnRestartNode;
 
@@ -311,9 +313,13 @@ public class DashboardPanel extends JPanel {
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         btnPanel.setOpaque(false);
 
+        btnStartCluster = createStyledActionButton("🚀 Khởi Động Cụm", new Color(21, 101, 192), e -> handleStartCluster());
+        btnStopCluster = createStyledActionButton("🛑 Tắt Tất Cả Node", new Color(183, 28, 28), e -> handleStopCluster());
         btnCrashNode = createStyledActionButton("Sập Node Được Chọn", new Color(198, 40, 40), e -> handleCrashNode());
         btnRestartNode = createStyledActionButton("Bật Lại Node Được Chọn", new Color(46, 125, 50), e -> handleRestartNode());
 
+        btnPanel.add(btnStartCluster);
+        btnPanel.add(btnStopCluster);
         btnPanel.add(btnCrashNode);
         btnPanel.add(btnRestartNode);
         bar.add(btnPanel, BorderLayout.EAST);
@@ -372,6 +378,183 @@ public class DashboardPanel extends JPanel {
         return btn;
     }
 
+    private void handleStartCluster() {
+        btnStartCluster.setEnabled(false);
+        btnStopCluster.setEnabled(false);
+        btnCrashNode.setEnabled(false);
+        btnRestartNode.setEnabled(false);
+        statusFeedbackLabel.setText("Đang khởi động cụm...");
+        appendLog("[KHỞI ĐỘNG CỤM] Bắt đầu kiểm tra và khởi động các thành phần trong cụm...");
+
+        SwingWorker<Void, String> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                // 1. Kiem tra va khoi dong Registry Server
+                String regHost = (config.registry() != null) ? config.registry().host() : "127.0.0.1";
+                int regPort = (config.registry() != null) ? config.registry().port() : 6000;
+
+                if (NodeProcessManager.isPortListening(regHost, regPort, 200)) {
+                    publish("[REGISTRY] Registry Server (port " + regPort + ") đã đang hoạt động.");
+                } else {
+                    publish("[REGISTRY] Đang khởi động Registry Server trên port " + regPort + "...");
+                    try {
+                        NodeProcessManager.startRegistry(regPort);
+                        boolean ready = false;
+                        for (int attempt = 0; attempt < 15; attempt++) {
+                            try {
+                                Thread.sleep(200);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                            if (NodeProcessManager.isPortListening(regHost, regPort, 150)) {
+                                ready = true;
+                                break;
+                            }
+                        }
+                        if (ready) {
+                            publish("[REGISTRY THÀNH CÔNG] Registry Server đã sẵn sàng trên port " + regPort + " (log: logs/registry.log)!");
+                        } else {
+                            publish("[REGISTRY CẢNH BÁO] Registry Server chưa mở port kịp thời. Kiểm tra logs/registry.log.");
+                        }
+                    } catch (Exception ex) {
+                        publish("[REGISTRY THẤT BẠI] Lỗi khởi động Registry Server: " + ex.getMessage());
+                    }
+                }
+
+                // 2. Kiem tra va khoi dong cac Cache Server
+                List<ServerConfig.ServerAddress> servers = config.servers();
+                for (int i = 0; i < servers.size(); i++) {
+                    ServerConfig.ServerAddress s = servers.get(i);
+                    int sIndex = i;
+                    if (NodeProcessManager.isPortListening(s.host(), s.port(), 200)) {
+                        publish("[SERVER #" + sIndex + "] Server đã đang hoạt động (port " + s.port() + ").");
+                    } else {
+                        publish("[SERVER #" + sIndex + "] Đang khởi động Server #" + sIndex + " (port " + s.port() + ")...");
+                        try {
+                            NodeProcessManager.startNode(sIndex, configPath);
+                            boolean ready = false;
+                            for (int attempt = 0; attempt < 15; attempt++) {
+                                try {
+                                    Thread.sleep(200);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                                if (NodeProcessManager.isPortListening(s.host(), s.port(), 150)) {
+                                    ready = true;
+                                    break;
+                                }
+                            }
+                            if (ready) {
+                                publish("[SERVER #" + sIndex + " THÀNH CÔNG] Server #" + sIndex + " đã sẵn sàng (port " + s.port() + ") và đang gửi heartbeat đăng ký!");
+                            } else {
+                                publish("[SERVER #" + sIndex + " CẢNH BÁO] Server #" + sIndex + " chưa mở port kịp thời. Kiểm tra logs/server-" + sIndex + ".log.");
+                            }
+                        } catch (Exception ex) {
+                            publish("[SERVER #" + sIndex + " THẤT BẠI] Lỗi khởi động Server #" + sIndex + ": " + ex.getMessage());
+                        }
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                for (String msg : chunks) {
+                    appendLog(msg);
+                    statusFeedbackLabel.setText(msg);
+                }
+            }
+
+            @Override
+            protected void done() {
+                btnStartCluster.setEnabled(true);
+                btnStopCluster.setEnabled(true);
+                btnCrashNode.setEnabled(true);
+                btnRestartNode.setEnabled(true);
+                statusFeedbackLabel.setText("Khởi động cụm hoàn tất!");
+                Timer t = new Timer(1500, ev -> refresh());
+                t.setRepeats(false);
+                t.start();
+            }
+        };
+        worker.execute();
+    }
+
+    private void handleStopCluster() {
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Bạn có chắc chắn muốn dừng toàn bộ các Cache Server trong cụm?",
+                "Xác nhận tắt cụm",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        btnStartCluster.setEnabled(false);
+        btnStopCluster.setEnabled(false);
+        btnCrashNode.setEnabled(false);
+        btnRestartNode.setEnabled(false);
+        statusFeedbackLabel.setText("Đang gửi lệnh dừng tới tất cả các Server...");
+        appendLog("[DỪNG CỤM] Bắt đầu tắt toàn bộ các Cache Server trong cụm...");
+
+        SwingWorker<Void, String> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                List<ServerConfig.ServerAddress> servers = config.servers();
+                for (int i = 0; i < servers.size(); i++) {
+                    ServerConfig.ServerAddress s = servers.get(i);
+                    int sIndex = i;
+                    int replPort = s.port() + 1000;
+                    if (NodeProcessManager.isPortListening(s.host(), s.port(), 150)) {
+                        boolean ok = NodeProcessManager.shutdownNode(s.host(), replPort, 1500);
+                        if (ok) {
+                            publish("[SẬP NODE #" + sIndex + " THÀNH CÔNG] Server #" + sIndex + " đã xác nhận SHUTDOWN.");
+                        } else {
+                            Process p = NodeProcessManager.getManagedProcess(sIndex);
+                            if (p != null && p.isAlive()) {
+                                p.destroy();
+                                publish("[SẬP NODE #" + sIndex + "] Đã dừng tiến trình Server #" + sIndex + ".");
+                            } else {
+                                publish("[SẬP NODE #" + sIndex + " THẤT BẠI] Không thể kết nối cổng replication của Server #" + sIndex + ".");
+                            }
+                        }
+                    } else {
+                        publish("[SẬP NODE #" + sIndex + "] Server #" + sIndex + " đã dừng từ trước.");
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                for (String msg : chunks) {
+                    appendLog(msg);
+                }
+            }
+
+            @Override
+            protected void done() {
+                for (int i = 0; i < config.servers().size(); i++) {
+                    tableModel.markNodeDown(i);
+                }
+                btnStartCluster.setEnabled(true);
+                btnStopCluster.setEnabled(true);
+                btnCrashNode.setEnabled(true);
+                btnRestartNode.setEnabled(true);
+                statusFeedbackLabel.setText("Đã dừng toàn bộ các Cache Server.");
+                appendLog("[DỪNG CỤM HOÀN TẤT] Toàn bộ các Cache Server đã chuyển trạng thái DOWN.");
+                Timer t = new Timer(1000, ev -> refresh());
+                t.setRepeats(false);
+                t.start();
+            }
+        };
+        worker.execute();
+    }
+
     private void handleCrashNode() {
         int row = serverTable.getSelectedRow();
         if (row < 0 || row >= tableModel.getRowCount()) {
@@ -396,6 +579,8 @@ public class DashboardPanel extends JPanel {
 
         btnCrashNode.setEnabled(false);
         btnRestartNode.setEnabled(false);
+        btnStartCluster.setEnabled(false);
+        btnStopCluster.setEnabled(false);
         statusFeedbackLabel.setText("Đang gửi lệnh SHUTDOWN tới Server #" + node.index() + "...");
         appendLog("[THAO TÁC] Gửi lệnh SHUTDOWN tới Server #" + node.index() + " (Port " + node.replicationPort() + ")...");
 
@@ -412,6 +597,11 @@ public class DashboardPanel extends JPanel {
                     if (ok) {
                         appendLog("[SẬP NODE THÀNH CÔNG] Server #" + node.index() + " đã xác nhận lệnh SHUTDOWN và dừng tiến trình!");
                         statusFeedbackLabel.setText("Đã sập Server #" + node.index());
+                        tableModel.markNodeDown(node.index());
+                        lblSelectedNodeInfo.setText(String.format(
+                                "Đang chọn: Server #%d (%s:%d | Port Replication: %d) - Trạng thái: %s",
+                                node.index(), node.host(), node.clientPort(), node.replicationPort(), DashboardDataModel.STATUS_DOWN
+                        ));
                     } else {
                         appendLog("[SẬP NODE THẤT BẠI] Không thể gửi SHUTDOWN tới Server #" + node.index() + " (Port " + node.replicationPort() + "). Có thể server đã dừng từ trước.");
                         statusFeedbackLabel.setText("Không thể kết nối port replication của Server #" + node.index());
@@ -421,6 +611,8 @@ public class DashboardPanel extends JPanel {
                 } finally {
                     btnCrashNode.setEnabled(true);
                     btnRestartNode.setEnabled(true);
+                    btnStartCluster.setEnabled(true);
+                    btnStopCluster.setEnabled(true);
                     refresh();
                 }
             }
@@ -438,8 +630,8 @@ public class DashboardPanel extends JPanel {
         NodeDisplayInfo node = tableModel.getNodeAt(row);
         if (node == null) return;
 
-        // Chan khi node dang UP de tranh tao tien trinh loi Address already in use
-        if (node.isUp()) {
+        // Chan khi node thuc su dang mo port
+        if (node.isUp() && NodeProcessManager.isPortListening(node.host(), node.clientPort(), 200)) {
             JOptionPane.showMessageDialog(
                     this,
                     "Server #" + node.index() + " hiện đang hoạt động (UP). Không thể bật lại node đang chạy!",
@@ -452,6 +644,8 @@ public class DashboardPanel extends JPanel {
 
         btnCrashNode.setEnabled(false);
         btnRestartNode.setEnabled(false);
+        btnStartCluster.setEnabled(false);
+        btnStopCluster.setEnabled(false);
         statusFeedbackLabel.setText("Đang khởi động lại Server #" + node.index() + "...");
         appendLog("[THAO TÁC] Khởi động lại Server #" + node.index() + " qua ProcessBuilder...");
 
@@ -494,6 +688,8 @@ public class DashboardPanel extends JPanel {
                 } finally {
                     btnCrashNode.setEnabled(true);
                     btnRestartNode.setEnabled(true);
+                    btnStartCluster.setEnabled(true);
+                    btnStopCluster.setEnabled(true);
                 }
             }
         };
@@ -747,6 +943,22 @@ public class DashboardPanel extends JPanel {
             return null;
         }
 
+        public void markNodeDown(int index) {
+            List<NodeDisplayInfo> updated = new ArrayList<>(nodes);
+            for (int i = 0; i < updated.size(); i++) {
+                NodeDisplayInfo n = updated.get(i);
+                if (n.index() == index) {
+                    updated.set(i, new NodeDisplayInfo(
+                            n.index(), n.host(), n.clientPort(), n.replicationPort(),
+                            DashboardDataModel.STATUS_DOWN, false, n.keyCount(), n.requestCount(), n.backupForIndex()
+                    ));
+                    break;
+                }
+            }
+            this.nodes = List.copyOf(updated);
+            fireTableDataChanged();
+        }
+
         @Override
         public int getRowCount() {
             return nodes.size();
@@ -783,6 +995,14 @@ public class DashboardPanel extends JPanel {
     // =========================================================================
     // Getters ho tro kiem thu giao dien
     // =========================================================================
+    public JButton btnStartCluster() {
+        return btnStartCluster;
+    }
+
+    public JButton btnStopCluster() {
+        return btnStopCluster;
+    }
+
     public JButton btnCrashNode() {
         return btnCrashNode;
     }

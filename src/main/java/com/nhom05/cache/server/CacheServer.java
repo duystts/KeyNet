@@ -29,9 +29,11 @@ public final class CacheServer {
 
     private static final Logger LOGGER = Logger.getLogger(CacheServer.class.getName());
 
-    static final int THREAD_POOL_SIZE = 50;
+    static final int THREAD_POOL_SIZE = 100;
     /** So ket noi toi da duoc xep hang cho thread ranh; vuot qua thi tra E004. */
-    static final int QUEUE_CAPACITY = 200;
+    static final int QUEUE_CAPACITY = 500;
+    /** Hang doi ket noi cho ServerSocket (backlog). */
+    static final int SERVER_BACKLOG = 1024;
     /** Ket noi mo ma im lang qua lau thi dong, tranh client bo quen (vd telnet) giu thread mai. */
     static final int IDLE_TIMEOUT_MS = 30_000;
     /** Dong request dai nhat hop le: "PUT|" + key + "|" + value + chut du. */
@@ -76,7 +78,7 @@ public final class CacheServer {
 
     /** Mo port va nhan ket noi; chan (block) cho toi khi shutdown(). */
     public void start() throws IOException {
-        try (ServerSocket ss = new ServerSocket(port)) {
+        try (ServerSocket ss = new ServerSocket(port, SERVER_BACKLOG)) {
             serverSocket = ss;
             listening.countDown();
             LOGGER.info(() -> "CacheServer dang lang nghe tai port " + ss.getLocalPort());
@@ -116,17 +118,43 @@ public final class CacheServer {
     private void serve(Socket socket) {
         try (socket) {
             socket.setSoTimeout(IDLE_TIMEOUT_MS);
+            socket.setTcpNoDelay(true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-            LineReader.Result line = LineReader.read(in, MAX_LINE_LENGTH);
-            if (line.tooLong()) {
-                write(socket, ProtocolParser.error(ErrorCode.E003));
-                LineReader.drain(socket, in);
-            } else if (line.text() != null) {
-                requestCount.incrementAndGet();
-                write(socket, handler.handle(line.text()));
+            boolean first = true;
+            while (running && !socket.isClosed()) {
+                if (!first) {
+                    // Neu da xu ly it nhat 1 request va hang doi dang co ket noi khac cho thi nhuong luong
+                    if (!pool.getQueue().isEmpty()) {
+                        break;
+                    }
+                    socket.setSoTimeout(1000);
+                }
+
+                LineReader.Result line;
+                try {
+                    line = LineReader.read(in, MAX_LINE_LENGTH);
+                } catch (SocketTimeoutException e) {
+                    if (first) {
+                        LOGGER.fine("Dong ket noi im lang qua " + IDLE_TIMEOUT_MS + "ms");
+                    }
+                    break;
+                } catch (IOException e) {
+                    break;
+                }
+
+                if (line.tooLong()) {
+                    write(socket, ProtocolParser.error(ErrorCode.E003));
+                    LineReader.drain(socket, in);
+                    break;
+                } else if (line.text() != null) {
+                    requestCount.incrementAndGet();
+                    write(socket, handler.handle(line.text()));
+                    first = false;
+                } else {
+                    // Client da dong ket noi (EOF)
+                    break;
+                }
             }
-        } catch (SocketTimeoutException e) {
-            LOGGER.fine("Dong ket noi im lang qua " + IDLE_TIMEOUT_MS + "ms");
         } catch (IOException e) {
             LOGGER.log(Level.FINE, "Loi ket noi client: " + e.getMessage(), e);
         }
@@ -145,6 +173,12 @@ public final class CacheServer {
     private static void reply(Socket socket, String response) {
         try (socket) {
             write(socket, response);
+            try {
+                socket.setSoTimeout(100);
+                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                LineReader.read(in, MAX_LINE_LENGTH);
+            } catch (IOException ignored) {
+            }
         } catch (IOException e) {
             LOGGER.fine("Khong gui duoc phan hoi: " + e.getMessage());
         }

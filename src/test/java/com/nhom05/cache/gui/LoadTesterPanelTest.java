@@ -40,6 +40,10 @@ class LoadTesterPanelTest {
         assertFalse(panel.btnStop().isEnabled());
         assertEquals(10, panel.spinnerThreads().getValue());
         assertEquals(50, panel.spinnerRequestsPerThread().getValue());
+        assertNotNull(panel.cmbTester());
+        assertNotNull(panel.chkUsePool());
+        assertTrue(panel.chkUsePool().isSelected());
+        assertEquals("Nguyen Van Nhat (MSSV: 2380601556)", panel.cmbTester().getSelectedItem());
     }
 
     @Test

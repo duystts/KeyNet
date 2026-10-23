@@ -532,6 +532,7 @@ public class ClientPanel extends JPanel {
         if (kErr != null) {
             displayResponseResult(kErr, -1, false, false);
             lblFeedbackStatus.setText("Lỗi: " + kErr);
+            lblFeedbackStatus.setForeground(COLOR_DANGER_TEXT);
             historyModel.logCommand("GET", key, "—", -1, false, kErr);
             JOptionPane.showMessageDialog(this, kErr, "Lỗi cú pháp Key", JOptionPane.WARNING_MESSAGE);
             return;
@@ -546,6 +547,7 @@ public class ClientPanel extends JPanel {
                     historyModel.updateValueIfPresent(key, val);
                 } else if ("NOTFOUND".equalsIgnoreCase(resp.line())) {
                     txtValue.setText("");
+                    historyModel.removeKey(key);
                 }
             }
         });
@@ -557,6 +559,7 @@ public class ClientPanel extends JPanel {
         if (kErr != null) {
             displayResponseResult(kErr, -1, false, false);
             lblFeedbackStatus.setText("Lỗi: " + kErr);
+            lblFeedbackStatus.setForeground(COLOR_DANGER_TEXT);
             historyModel.logCommand("DELETE", key, "—", -1, false, kErr);
             JOptionPane.showMessageDialog(this, kErr, "Lỗi cú pháp Key", JOptionPane.WARNING_MESSAGE);
             return;
@@ -564,9 +567,11 @@ public class ClientPanel extends JPanel {
 
         String requestLine = ProtocolParser.delete(key);
         executeAsync("DELETE", key, "—", requestLine, resp -> {
-            if (resp != null && resp.line().startsWith("OK")) {
-                historyModel.removeKey(key);
-                txtValue.setText("");
+            if (resp != null) {
+                if (resp.line().startsWith("OK") || "NOTFOUND".equalsIgnoreCase(resp.line())) {
+                    historyModel.removeKey(key);
+                    txtValue.setText("");
+                }
             }
         });
     }
@@ -574,10 +579,18 @@ public class ClientPanel extends JPanel {
     private void handleClearForm() {
         txtKey.setText("");
         txtValue.setText("");
+        if (keyTable != null) {
+            keyTable.clearSelection();
+        }
         lblHashRouteInfo.setText("Nhập Key để xem định tuyến Server chính và Server dự phòng...");
+        lblHashRouteInfo.setForeground(new Color(21, 101, 192));
         lblLastResponseStatus.setText("Đã xóa form.");
+        lblLastResponseStatus.setForeground(new Color(33, 33, 33));
         lblServedBy.setText("");
         lblFailoverBadge.setVisible(false);
+        lblFeedbackStatus.setText("Sẵn sàng thao tác");
+        lblFeedbackStatus.setForeground(COLOR_SUCCESS_TEXT);
+        txtKey.requestFocusInWindow();
     }
 
     private void executeAsync(String command, String key, String value, String requestLine, java.util.function.Consumer<CacheClient.Response> callback) {
@@ -587,6 +600,7 @@ public class ClientPanel extends JPanel {
 
         setFormEnabled(false);
         lblFeedbackStatus.setText("Đang gửi lệnh " + command + "...");
+        lblFeedbackStatus.setForeground(new Color(21, 101, 192));
 
         SwingWorker<CacheClient.Response, Void> worker = new SwingWorker<>() {
             @Override
@@ -607,12 +621,22 @@ public class ClientPanel extends JPanel {
                     if (callback != null) {
                         callback.accept(resp);
                     }
-                    lblFeedbackStatus.setText("Hoàn thành lệnh " + command);
+                    if (resp.line() != null && resp.line().startsWith("NOTFOUND")) {
+                        lblFeedbackStatus.setText("Không tìm thấy key: " + key + " (NOTFOUND)");
+                        lblFeedbackStatus.setForeground(COLOR_WARN_TEXT);
+                    } else if (resp.line() != null && (resp.line().startsWith("OK") || resp.line().startsWith("VALUE|"))) {
+                        lblFeedbackStatus.setText("Hoàn thành lệnh " + command);
+                        lblFeedbackStatus.setForeground(COLOR_SUCCESS_TEXT);
+                    } else {
+                        lblFeedbackStatus.setText("Lỗi thực thi lệnh " + command);
+                        lblFeedbackStatus.setForeground(COLOR_DANGER_TEXT);
+                    }
                 } catch (Exception e) {
                     String err = "ERROR|E004|" + e.getMessage();
                     displayResponseResult(err, -1, false, false);
                     historyModel.logCommand(command, key, value, -1, false, err);
                     lblFeedbackStatus.setText("Lỗi thực thi: " + e.getMessage());
+                    lblFeedbackStatus.setForeground(COLOR_DANGER_TEXT);
                 } finally {
                     isExecuting.set(false);
                     setFormEnabled(true);
@@ -625,10 +649,10 @@ public class ClientPanel extends JPanel {
 
     private void displayResponseResult(String responseLine, int servedBy, boolean failedOver, boolean success) {
         lblLastResponseStatus.setText("Kết quả: " + responseLine);
-        if (success) {
-            lblLastResponseStatus.setForeground(COLOR_SUCCESS_TEXT);
-        } else if (responseLine != null && responseLine.startsWith("NOTFOUND")) {
+        if (responseLine != null && responseLine.startsWith("NOTFOUND")) {
             lblLastResponseStatus.setForeground(COLOR_WARN_TEXT);
+        } else if (success) {
+            lblLastResponseStatus.setForeground(COLOR_SUCCESS_TEXT);
         } else {
             lblLastResponseStatus.setForeground(COLOR_DANGER_TEXT);
         }

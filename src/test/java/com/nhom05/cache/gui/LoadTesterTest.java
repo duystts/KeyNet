@@ -106,6 +106,39 @@ class LoadTesterTest {
     }
 
     @Test
+    void testCustomTesterInfoAndConnectionPoolReport() {
+        LoadTestConfig custom = new LoadTestConfig(2, 10, 50, 5, "docs/test_report.txt", "Pham Anh Duy (MSSV: 2380600371)", true);
+        assertEquals("Pham Anh Duy (MSSV: 2380600371)", custom.testerInfo());
+        assertTrue(custom.useConnectionPool());
+
+        String report = LoadTester.generateReportContent(
+                custom,
+                500,
+                200.0,
+                1.5,
+                0.5,
+                5.0,
+                1.2,
+                2.0,
+                4.0,
+                20,
+                20,
+                0,
+                100.0,
+                10,
+                0,
+                10,
+                0,
+                10,
+                0,
+                List.of(new ServerAddress("127.0.0.1", 5001))
+        );
+
+        assertTrue(report.contains("Kiem thu vien           : Pham Anh Duy (MSSV: 2380600371)"));
+        assertTrue(report.contains("Connection Pool (Keep-Alive Reuse)"));
+    }
+
+    @Test
     void testWriteReportToFileOverwritesExisting(@TempDir Path tempDir) throws IOException {
         Path reportFile = tempDir.resolve("test_report.txt");
 

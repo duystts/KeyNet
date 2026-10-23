@@ -55,4 +55,15 @@ class ClientPanelTest {
         assertNull(com.nhom05.cache.common.ProtocolParser.keyError("validKey"));
         assertNull(com.nhom05.cache.common.ProtocolParser.valueError("validValue"));
     }
+
+    @Test
+    void testHistoryModelRemoveKeyOnNotFound() {
+        ClientHistoryModel history = new ClientHistoryModel();
+        history.putKey("user", "alice", 0, 1);
+        assertEquals(1, history.keyCount());
+
+        boolean removed = history.removeKey("user");
+        assertTrue(removed);
+        assertEquals(0, history.keyCount());
+    }
 }

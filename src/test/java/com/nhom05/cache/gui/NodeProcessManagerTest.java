@@ -81,8 +81,23 @@ class NodeProcessManagerTest {
     void testProcessLifecycleTracking() {
         assertFalse(NodeProcessManager.isProcessAlive(99));
         assertNull(NodeProcessManager.getManagedProcess(99));
+        assertFalse(NodeProcessManager.isRegistryProcessAlive());
+        assertNull(NodeProcessManager.getManagedRegistryProcess());
 
         NodeProcessManager.stopAllManagedProcesses();
         assertFalse(NodeProcessManager.isProcessAlive(99));
+        assertFalse(NodeProcessManager.isRegistryProcessAlive());
+    }
+
+    @Test
+    void testPortListeningWithServerSocket() throws Exception {
+        assertFalse(NodeProcessManager.isPortListening(null, 6000, 100));
+        assertFalse(NodeProcessManager.isPortListening("127.0.0.1", -1, 100));
+        assertFalse(NodeProcessManager.isPortListening("127.0.0.1", 59998, 100));
+
+        try (ServerSocket ss = new ServerSocket(0)) {
+            int port = ss.getLocalPort();
+            assertTrue(NodeProcessManager.isPortListening("127.0.0.1", port, 500));
+        }
     }
 }
