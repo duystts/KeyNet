@@ -6,6 +6,7 @@ import com.nhom05.cache.common.ServerConfig;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -23,7 +24,8 @@ import java.util.logging.Logger;
 
 /**
  * Module 1 - Cache Server: lang nghe TCP, moi ket noi giao cho 1 thread trong pool,
- * doc 1 dong request -> tra 1 dong response -> dong ket noi (muc 1, 8 dac ta).
+ * doc 1 dong request -> tra 1 dong response (muc 1, 8 dac ta). Client keep-alive (#58) gui tiep
+ * trong 1s thi dung lai ket noi; im lang hoac hang doi dang co ket noi cho thi dong.
  */
 public final class CacheServer {
 
@@ -170,15 +172,17 @@ public final class CacheServer {
         return store.size();
     }
 
+    /**
+     * Chay tren thread accept nen khong duoc doi client: gui response, dong chieu ghi (FIN de
+     * client doc het response), bo qua phan request da toi san roi dong. Khong doc chan (block)
+     * vi moi ket noi bi tu choi se giu thread accept, ket noi sau phai cho rat lau moi nhan E004.
+     */
     private static void reply(Socket socket, String response) {
         try (socket) {
             write(socket, response);
-            try {
-                socket.setSoTimeout(100);
-                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-                LineReader.read(in, MAX_LINE_LENGTH);
-            } catch (IOException ignored) {
-            }
+            socket.shutdownOutput();
+            InputStream in = socket.getInputStream();
+            in.skip(in.available());
         } catch (IOException e) {
             LOGGER.fine("Khong gui duoc phan hoi: " + e.getMessage());
         }

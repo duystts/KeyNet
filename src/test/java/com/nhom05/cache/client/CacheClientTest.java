@@ -423,6 +423,30 @@ class CacheClientTest {
         }
     }
 
+    @Test
+    void pooled_serverClosedIdleConnection_retriesWithoutFailover() throws InterruptedException {
+        // #59: server dong ket noi keep-alive sau 1s im lang; socket cu trong pool da chet
+        // nhung client khong biet -> truoc day bao E004 va failover nham sang server du phong
+        CacheServer s0 = startServer();
+        CacheServer s1 = startServer();
+        List<ServerAddress> addrs = List.of(
+                new ServerAddress("127.0.0.1", s0.localPort()),
+                new ServerAddress("127.0.0.1", s1.localPort()));
+        try (CacheClient c = CacheClient.pooled(addrs, 2000, 5)) {
+            String key = "x";
+            int primary = c.router().primaryIndex(key);
+            assertFalse(c.send(key, "PUT|x|1").failedOver());
+            Thread.sleep(1500);
+            CacheClient.Response r = c.send(key, "GET|x");
+            assertEquals("VALUE|1", r.line());
+            assertEquals(primary, r.servedBy());
+            assertFalse(r.failedOver(), "server chinh van song, khong duoc failover");
+        } finally {
+            s0.shutdown();
+            s1.shutdown();
+        }
+    }
+
     // ------------------------------------------------------------------ helper
 
     /** Bat 1 CacheServer that voi port 0, doi den khi san sang. */

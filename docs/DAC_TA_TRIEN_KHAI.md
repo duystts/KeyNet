@@ -13,7 +13,7 @@ File này chốt **tên lớp, chữ ký hàm, cổng mạng, định dạng l�
 |---|---|
 | Ngôn ngữ / build | Java 17, Maven, **không thêm thư viện ngoài** (GUI dùng Swing). Cần thêm dependency → hỏi nhóm trưởng |
 | Package | Chỉ code trong package của module mình (mục 7 đặc tả). Sửa `common` hoặc `server` → ghi rõ trong PR, nhóm trưởng review |
-| Socket | UTF-8 tường minh, mỗi message kết thúc `\n`, connection-per-request (trừ Registry, xem #11) |
+| Socket | UTF-8 tường minh, mỗi message kết thúc `\n`, mặc định connection-per-request (trừ Registry, xem #11). Client có thể bật Connection Pool (keep-alive, #58): sau request đầu server chỉ giữ kết nối khi client gửi tiếp trong 1 giây và hàng đợi đang trống, nên client gặp socket cũ đã bị đóng thì mở kết nối mới, không failover (#59) |
 | Timeout | Client đặt `connect` và `setSoTimeout` = **2000 ms** |
 | Log | `java.util.logging.Logger`, không `System.out.println` trong code server/client (GUI/demo console thì được) |
 | Comment trong code | Tiếng Việt không dấu (giống code hiện có) |
@@ -228,7 +228,7 @@ Lệnh (mục 6 đặc tả), mỗi dòng 1 lệnh, trả 1 dòng:
 | `STATS` | `STATS\|0:UP:12:340;1:DOWN:10:200` (sắp theo index); chưa có server → `STATS\|` |
 | sai cú pháp | `ERROR\|E001\|...` |
 | lỗi nội bộ khi xử lý lệnh | `ERROR\|E005\|...` |
-| quá tải (pool 20 luồng + hàng đợi 100 đều đầy) | `ERROR\|E004\|Server overloaded` rồi đóng kết nối, Registry vẫn nhận kết nối mới |
+| quá tải (pool 100 luồng + hàng đợi 500 đều đầy) | `ERROR\|E004\|Server overloaded` ngay (không chờ đọc request) rồi đóng kết nối, Registry vẫn nhận kết nối mới |
 
 ```java
 public final class RegistryServer {

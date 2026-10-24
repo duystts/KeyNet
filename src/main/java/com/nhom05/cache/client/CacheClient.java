@@ -11,6 +11,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -270,38 +271,41 @@ public class CacheClient implements AutoCloseable {
 
     private String sendToPooledConnection(ServerAddress addr, String requestLine) {
         BlockingQueue<PooledConnection> pool = connectionPools.computeIfAbsent(addr, k -> new ArrayBlockingQueue<>(maxPoolSize));
-        PooledConnection conn = null;
 
-        // 1. Lay ket noi con song tu pool
+        // 1. Thu ket noi cu trong pool. Server dong ket noi keep-alive khi im lang qua lau hoac
+        //    khi dang ban (#59) ma client khong biet -> ket noi cu hong thi bo, sang buoc 2.
+        //    Timeout thi khong thu lai: server con song nhung cham, de send() failover.
+        PooledConnection conn;
         while ((conn = pool.poll()) != null) {
-            if (conn.isAlive()) {
-                break;
+            if (!conn.isAlive()) {
+                conn.close();
+                continue;
             }
-            conn.close();
-            conn = null;
-        }
-
-        // 2. Tao ket noi moi neu pool dang trong
-        if (conn == null) {
             try {
-                Socket socket = new Socket();
-                socket.setTcpNoDelay(true);
-                socket.connect(new InetSocketAddress(addr.host(), addr.port()), timeoutMs);
-                socket.setSoTimeout(timeoutMs);
-                conn = new PooledConnection(socket);
-            } catch (IOException e) {
-                LOGGER.warning("Loi ket noi pooled toi " + addr.host() + ":" + addr.port() + ": " + e.getMessage());
+                String response = exchange(conn, requestLine);
+                if (response != null) {
+                    release(pool, conn);
+                    return response;
+                }
+                conn.close();
+            } catch (SocketTimeoutException e) {
+                conn.close();
+                LOGGER.warning("Het thoi gian cho response pooled tu " + addr.host() + ":" + addr.port());
                 return ProtocolParser.error(ErrorCode.E004,
                         "Khong ket noi duoc server " + addr.host() + ":" + addr.port());
+            } catch (IOException e) {
+                conn.close();
             }
         }
 
-        // 3. Gui request va nhan response
+        // 2. Mo ket noi moi: loi o day moi that su la server khong kha dung
         try {
-            conn.out.write((requestLine + "\n").getBytes(StandardCharsets.UTF_8));
-            conn.out.flush();
-
-            String response = conn.in.readLine();
+            Socket socket = new Socket();
+            socket.setTcpNoDelay(true);
+            socket.connect(new InetSocketAddress(addr.host(), addr.port()), timeoutMs);
+            socket.setSoTimeout(timeoutMs);
+            conn = new PooledConnection(socket);
+            String response = exchange(conn, requestLine);
             if (response == null) {
                 conn.close();
                 LOGGER.warning("Server " + addr.host() + ":" + addr.port()
@@ -309,18 +313,29 @@ public class CacheClient implements AutoCloseable {
                 return ProtocolParser.error(ErrorCode.E004,
                         "Khong ket noi duoc server " + addr.host() + ":" + addr.port());
             }
-
-            // Tra connection lai pool neu chua day va client chua bi dong
-            if (!closed && !pool.offer(conn)) {
-                conn.close();
-            }
-
+            release(pool, conn);
             return response;
         } catch (IOException e) {
-            conn.close();
-            LOGGER.warning("Loi I/O tren pooled socket toi " + addr.host() + ":" + addr.port() + ": " + e.getMessage());
+            if (conn != null) {
+                conn.close();
+            }
+            LOGGER.warning("Loi ket noi pooled toi " + addr.host() + ":" + addr.port() + ": " + e.getMessage());
             return ProtocolParser.error(ErrorCode.E004,
                     "Khong ket noi duoc server " + addr.host() + ":" + addr.port());
+        }
+    }
+
+    /** Gui 1 dong request, doc 1 dong response; null neu server da dong ket noi. */
+    private static String exchange(PooledConnection conn, String requestLine) throws IOException {
+        conn.out.write((requestLine + "\n").getBytes(StandardCharsets.UTF_8));
+        conn.out.flush();
+        return conn.in.readLine();
+    }
+
+    /** Tra ket noi lai pool neu chua day va client chua bi dong. */
+    private void release(BlockingQueue<PooledConnection> pool, PooledConnection conn) {
+        if (closed || !pool.offer(conn)) {
+            conn.close();
         }
     }
 
