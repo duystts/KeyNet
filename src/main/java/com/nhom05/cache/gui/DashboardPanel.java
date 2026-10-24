@@ -2,6 +2,7 @@ package com.nhom05.cache.gui;
 
 import com.nhom05.cache.common.ServerConfig;
 import com.nhom05.cache.registry.RegistryClient;
+import com.nhom05.cache.registry.RegistryServer;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
@@ -17,6 +18,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -76,6 +79,18 @@ public class DashboardPanel extends JPanel {
     // Theo doi trang thai truoc do de ghi log su kien
     private final Map<Integer, String> previousNodeStatuses = new HashMap<>();
     private Boolean previousRegistryConnected = null;
+
+    /**
+     * #61: node vua tat thanh cong tu GUI -> thoi diem tat. Registry con bao UP toi 9 giay nen
+     * refresh van hien DOWN cho toi khi Registry bat kip, node mo lai port, hoac het han.
+     */
+    private final Map<Integer, Long> stoppedByGui = new ConcurrentHashMap<>();
+    static final long STOPPED_OVERRIDE_MS = RegistryServer.TIMEOUT_MS + 3000;
+    /**
+     * SHUTDOWN tra OK roi moi dung tien trinh nen ngay sau do port client van con mo; chi coi
+     * "port mo lai" la node da duoc bat lai khi da qua khoang nay.
+     */
+    static final long RESTART_GRACE_MS = 2000;
 
     public DashboardPanel(ServerConfig config, RegistryClient registryClient) {
         this(config, registryClient, "config/config.properties", true);
@@ -539,7 +554,7 @@ public class DashboardPanel extends JPanel {
             @Override
             protected void done() {
                 for (int i = 0; i < config.servers().size(); i++) {
-                    tableModel.markNodeDown(i);
+                    markStopped(i);
                 }
                 btnStartCluster.setEnabled(true);
                 btnStopCluster.setEnabled(true);
@@ -597,7 +612,7 @@ public class DashboardPanel extends JPanel {
                     if (ok) {
                         appendLog("[SẬP NODE THÀNH CÔNG] Server #" + node.index() + " đã xác nhận lệnh SHUTDOWN và dừng tiến trình!");
                         statusFeedbackLabel.setText("Đã sập Server #" + node.index());
-                        tableModel.markNodeDown(node.index());
+                        markStopped(node.index());
                         lblSelectedNodeInfo.setText(String.format(
                                 "Đang chọn: Server #%d (%s:%d | Port Replication: %d) - Trạng thái: %s",
                                 node.index(), node.host(), node.clientPort(), node.replicationPort(), DashboardDataModel.STATUS_DOWN
@@ -670,6 +685,7 @@ public class DashboardPanel extends JPanel {
             protected void done() {
                 try {
                     Process p = get();
+                    stoppedByGui.remove(node.index());
                     appendLog("[BẬT LẠI NODE THÀNH CÔNG] Đã khởi chạy Server #" + node.index() + " (PID: " + p.pid() + ", log: logs/server-" + node.index() + ".log). Server đang tự SYNC dữ liệu...");
                     statusFeedbackLabel.setText("Đã khởi chạy Server #" + node.index());
                     Timer t = new Timer(1500, e -> refresh());
@@ -791,7 +807,8 @@ public class DashboardPanel extends JPanel {
         SwingWorker<DashboardDataModel, Void> worker = new SwingWorker<>() {
             @Override
             protected DashboardDataModel doInBackground() {
-                return DashboardDataModel.fetch(config, registryClient);
+                DashboardDataModel model = DashboardDataModel.fetch(config, registryClient);
+                return model.withNodesDown(nodesStillStopped(model));
             }
 
             @Override
@@ -895,6 +912,33 @@ public class DashboardPanel extends JPanel {
                 previousNodeStatuses.put(node.index(), node.status());
             }
         }
+    }
+
+    /** Danh dau node da tat tu GUI: hien DOWN ngay va giu DOWN qua cac lan refresh (#61). */
+    private void markStopped(int index) {
+        stoppedByGui.put(index, System.currentTimeMillis());
+        tableModel.markNodeDown(index);
+    }
+
+    /**
+     * Chay trong luong nen cua refresh(): node nao van can ghi de DOWN. Bo ghi nho khi Registry
+     * da bao khong UP, khi node mo lai port client sau RESTART_GRACE_MS (da duoc bat lai tu ngoai
+     * GUI) hoac khi qua STOPPED_OVERRIDE_MS.
+     */
+    private Set<Integer> nodesStillStopped(DashboardDataModel model) {
+        long now = System.currentTimeMillis();
+        for (NodeDisplayInfo n : model.nodes()) {
+            Long stoppedAt = stoppedByGui.get(n.index());
+            if (stoppedAt == null) {
+                continue;
+            }
+            long elapsed = now - stoppedAt;
+            if (!n.isUp() || elapsed > STOPPED_OVERRIDE_MS || (elapsed > RESTART_GRACE_MS
+                    && NodeProcessManager.isPortListening(n.host(), n.clientPort(), 200))) {
+                stoppedByGui.remove(n.index(), stoppedAt);
+            }
+        }
+        return Set.copyOf(stoppedByGui.keySet());
     }
 
     private void appendLog(String message) {

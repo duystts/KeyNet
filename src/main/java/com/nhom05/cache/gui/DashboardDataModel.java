@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Xu ly logic tong hop va dinh dang du lieu Dashboard tu ServerConfig va RegistryClient.
@@ -139,6 +140,34 @@ public final class DashboardDataModel {
                 sumRequests,
                 timestamp != null ? timestamp : "--:--:--"
         );
+    }
+
+    /**
+     * Hien cac node vua bi tat tu GUI la DOWN du Registry van bao UP (Registry chi bao DOWN sau
+     * 9 giay khong nhan heartbeat, #61); tinh lai so node UP, tong key va tong request.
+     */
+    public DashboardDataModel withNodesDown(Set<Integer> downIndexes) {
+        if (downIndexes == null || downIndexes.isEmpty()) {
+            return this;
+        }
+        List<NodeDisplayInfo> updated = new ArrayList<>(nodes.size());
+        int upCount = 0;
+        int sumKeys = 0;
+        long sumRequests = 0;
+        for (NodeDisplayInfo n : nodes) {
+            if (n.isUp() && downIndexes.contains(n.index())) {
+                n = new NodeDisplayInfo(n.index(), n.host(), n.clientPort(), n.replicationPort(),
+                        STATUS_DOWN, false, n.keyCount(), n.requestCount(), n.backupForIndex());
+            }
+            if (n.isUp()) {
+                upCount++;
+                sumKeys += n.keyCount();
+                sumRequests += n.requestCount();
+            }
+            updated.add(n);
+        }
+        return new DashboardDataModel(registryConnected, registryAddress, updated, totalNodes,
+                upCount, sumKeys, sumRequests, lastUpdatedTime);
     }
 
     public boolean isRegistryConnected() {
